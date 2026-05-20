@@ -32,7 +32,11 @@ from reporter import Reporter
 @click.option('--passive', is_flag=True, help='Incluir fuentes pasivas (crt.sh, HackerTarget, etc)')
 @click.option('--passive-only', is_flag=True, help='Solo fuentes pasivas, sin consultas DNS directas')
 @click.option('-d', '--output-dir', default='resultados', help='Directorio base para guardar resultados (default: resultados)')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir):
+@click.option('--vulns', is_flag=True, help='Ejecutar analisis de vulnerabilidades DNS')
+@click.option('--vulns-only', is_flag=True, help='Solo analisis de vulnerabilidades (sin enumeracion completa)')
+@click.option('--no-takeover', is_flag=True, help='Saltar check de subdomain takeover')
+@click.option('--no-infra', is_flag=True, help='Saltar checks de infraestructura')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -48,6 +52,9 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
         python main.py google.com --no-axfr --no-reverse -v
         python main.py google.com -o json
         python main.py google.com -d /ruta/personalizada
+        python main.py google.com --vulns
+        python main.py google.com --vulns-only
+        python main.py google.com --vulns --no-takeover
     """
 
     tipos_dns_list = [t.strip().upper() for t in tipos_dns.split(',')] if tipos_dns else ['A']
@@ -70,6 +77,10 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             con_permutaciones=permutations,
             solo_pasivo=passive_only,
             con_pasivo=passive,
+            con_vulnerabilidades=vulns,
+            solo_vulnerabilidades=vulns_only,
+            check_takeover=not no_takeover,
+            check_infrastructure=not no_infra,
         )
 
         if output == 'all':

@@ -11,6 +11,7 @@ from typing import List, Dict, Optional
 from resolver import DNSResolver
 from subdomain_scanner import SubdomainScanner
 from sources import PassiveSources
+from vulnerabilities import VulnerabilityScanner
 
 import dns.zone
 import dns.query
@@ -35,6 +36,8 @@ class DNSScanner:
             'axfr_records': [],
             'reverse_lookups': {},
             'estadisticas': {},
+            'vulnerabilidades': [],
+            'resumen_vulnerabilidades': {},
         }
         self.tiempos_fases = {}
 
@@ -230,6 +233,22 @@ class DNSScanner:
         self.tiempos_fases['reverse_lookups'] = time.time() - inicio
         return resultados_reverse
 
+    def analisis_vulnerabilidades(self, check_takeover: bool = True, check_infrastructure: bool = True) -> List:
+        """Ejecuta analisis de vulnerabilidades DNS"""
+        inicio = time.time()
+        vuln_scanner = VulnerabilityScanner(
+            self.dominio, self.resolver, self.resultados, verbose=self.verbose
+        )
+        findings = vuln_scanner.run_all(
+            check_takeover=check_takeover,
+            check_infrastructure=check_infrastructure,
+        )
+
+        self.resultados['vulnerabilidades'] = [f.to_dict() for f in findings]
+        self.resultados['resumen_vulnerabilidades'] = vuln_scanner.get_summary()
+        self.tiempos_fases['vulnerabilidades'] = time.time() - inicio
+        return findings
+
     def escanear_completo(
         self,
         wordlist: str = None,
@@ -243,6 +262,10 @@ class DNSScanner:
         con_permutaciones: bool = False,
         solo_pasivo: bool = False,
         con_pasivo: bool = False,
+        con_vulnerabilidades: bool = False,
+        solo_vulnerabilidades: bool = False,
+        check_takeover: bool = True,
+        check_infrastructure: bool = True,
     ) -> Dict:
         tiempo_total_inicio = time.time()
 
@@ -251,6 +274,21 @@ class DNSScanner:
         print(f"  Dominio: {self.dominio}")
         print(f"  Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
+
+        if solo_vulnerabilidades:
+            print("\n[*] Modo solo vulnerabilidades")
+            print("[*] Ejecutando enumeracion basica requerida...")
+            self.enumerar_registros_basicos()
+            self.analisis_vulnerabilidades(
+                check_takeover=check_takeover,
+                check_infrastructure=check_infrastructure,
+            )
+            self.resultados['estadisticas']['tiempo_total'] = time.time() - tiempo_total_inicio
+            print("\n" + "=" * 60)
+            print("  ESCANEO COMPLETADO")
+            print("=" * 60)
+            self._mostrar_resumen()
+            return self.resultados
 
         if solo_pasivo:
             print("\n[*] Modo solo pasivo - Sin consultas DNS directas")
@@ -326,6 +364,20 @@ class DNSScanner:
         else:
             print("\n[FASE 4/4] Busquedas inversas - OMITIDA")
 
+        if con_vulnerabilidades:
+            print("\n[FASE 5/5] Analisis de vulnerabilidades")
+            try:
+                self.analisis_vulnerabilidades(
+                    check_takeover=check_takeover,
+                    check_infrastructure=check_infrastructure,
+                )
+            except KeyboardInterrupt:
+                print("\n[-] Analisis de vulnerabilidades cancelado")
+            except Exception as e:
+                print(f"[-] Error en analisis de vulnerabilidades: {e}")
+        else:
+            print("\n[FASE 5/5] Analisis de vulnerabilidades - OMITIDA")
+
         tiempo_total = time.time() - tiempo_total_inicio
         self.resultados['estadisticas']['tiempo_total'] = tiempo_total
         self.resultados['estadisticas']['tiempos_fases'] = {k: round(v, 2) for k, v in self.tiempos_fases.items()}
@@ -369,6 +421,20 @@ class DNSScanner:
         reverse_exitosos = sum(1 for v in self.resultados['reverse_lookups'].values() if v)
         if reverse_exitosos > 0:
             print(f"  {'Reverse lookups':.<40} {reverse_exitosos} exitosos")
+
+        vuln_summary = self.resultados.get('resumen_vulnerabilidades', {})
+        if vuln_summary and vuln_summary.get('total', 0) > 0:
+            print(f"\n  {'VULNERABILIDADES':.<40} {vuln_summary['total']} encontradas")
+            if vuln_summary.get('critical', 0) > 0:
+                print(f"  {'  CRITICAL':.<40} {vuln_summary['critical']}")
+            if vuln_summary.get('high', 0) > 0:
+                print(f"  {'  HIGH':.<40} {vuln_summary['high']}")
+            if vuln_summary.get('medium', 0) > 0:
+                print(f"  {'  MEDIUM':.<40} {vuln_summary['medium']}")
+            if vuln_summary.get('low', 0) > 0:
+                print(f"  {'  LOW':.<40} {vuln_summary['low']}")
+            if vuln_summary.get('info', 0) > 0:
+                print(f"  {'  INFO':.<40} {vuln_summary['info']}")
 
         stats = self.resultados.get('estadisticas', {})
         if stats.get('permutaciones_generadas', 0) > 0:

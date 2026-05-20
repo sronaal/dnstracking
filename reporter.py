@@ -50,6 +50,8 @@ class Reporter:
             axfr_records = resultados.get('axfr_records', [])
             reverse = resultados.get('reverse_lookups', {})
             stats = resultados.get('estadisticas', {})
+            vulns = resultados.get('vulnerabilidades', [])
+            vuln_summary = resultados.get('resumen_vulnerabilidades', {})
 
             lineas = []
             lineas.append("=" * 70)
@@ -114,6 +116,31 @@ class Reporter:
                 for ip, dom in reverse_exitosos.items():
                     lineas.append(f"  {ip:<20} -> {dom}")
                 lineas.append("")
+
+            if vulns:
+                lineas.append("=" * 70)
+                lineas.append("  VULNERABILIDADES")
+                lineas.append("=" * 70)
+                lineas.append("")
+                if vuln_summary:
+                    lineas.append(f"  Total: {vuln_summary.get('total', 0)}")
+                    lineas.append(f"  Critical: {vuln_summary.get('critical', 0)}")
+                    lineas.append(f"  High: {vuln_summary.get('high', 0)}")
+                    lineas.append(f"  Medium: {vuln_summary.get('medium', 0)}")
+                    lineas.append(f"  Low: {vuln_summary.get('low', 0)}")
+                    lineas.append(f"  Info: {vuln_summary.get('info', 0)}")
+                    lineas.append("")
+
+                for vuln in vulns:
+                    sev = vuln.get('severidad', 'UNKNOWN')
+                    icon = {'CRITICAL': '[!!!]', 'HIGH': '[!!]', 'MEDIUM': '[!]', 'LOW': '[~]', 'INFO': '[i]'}.get(sev, '[?]')
+                    lineas.append(f"  {icon} [{sev}] {vuln.get('id', '')} - {vuln.get('nombre', '')}")
+                    lineas.append(f"      Componente: {vuln.get('componente', '')}")
+                    lineas.append(f"      Descripcion: {vuln.get('descripcion', '')}")
+                    lineas.append(f"      Evidencia: {vuln.get('evidencia', '')}")
+                    lineas.append(f"      Recomendacion: {vuln.get('recomendacion', '')}")
+                    lineas.append(f"      CVSS: {vuln.get('cvss_estimate', 'N/A')}")
+                    lineas.append("")
 
             lineas.append("=" * 70)
             lineas.append("  ESTADISTICAS")
@@ -186,6 +213,8 @@ class Reporter:
         axfr_records = resultados.get('axfr_records', [])
         reverse = resultados.get('reverse_lookups', {})
         stats = resultados.get('estadisticas', {})
+        vulns = resultados.get('vulnerabilidades', [])
+        vuln_summary = resultados.get('resumen_vulnerabilidades', {})
 
         registros_html = ""
         for tipo, valores in basicos.items():
@@ -214,6 +243,83 @@ class Reporter:
         if reverse_exitosos:
             for ip, dom in reverse_exitosos.items():
                 reverse_html += f"                <tr><td>{ip}</td><td>{dom}</td></tr>\n"
+
+        vulns_html = ""
+        if vulns:
+            vulns_html += """
+        <h2>Vulnerabilidades Encontradas</h2>
+        <div class="card">
+"""
+            if vuln_summary:
+                vulns_html += f"""
+            <div class="stats">
+                <div class="stat">
+                    <div class="stat-number">{vuln_summary.get('total', 0)}</div>
+                    <div class="stat-label">Total</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #f87171;">{vuln_summary.get('critical', 0)}</div>
+                    <div class="stat-label">Critical</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #fb923c;">{vuln_summary.get('high', 0)}</div>
+                    <div class="stat-label">High</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #fbbf24;">{vuln_summary.get('medium', 0)}</div>
+                    <div class="stat-label">Medium</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-number" style="color: #34d399;">{vuln_summary.get('low', 0)}</div>
+                    <div class="stat-label">Low</div>
+                </div>
+            </div>
+"""
+            vulns_html += """
+            <table>
+                <tr><th>ID</th><th>Severidad</th><th>Nombre</th><th>Componente</th><th>CVSS</th></tr>
+"""
+            for vuln in vulns:
+                sev = vuln.get('severidad', 'UNKNOWN')
+                badge_class = {
+                    'CRITICAL': 'badge-danger',
+                    'HIGH': 'badge-high',
+                    'MEDIUM': 'badge-medium',
+                    'LOW': 'badge-low',
+                    'INFO': 'badge-info',
+                }.get(sev, 'badge-info')
+                vulns_html += f"""                <tr>
+                    <td>{vuln.get('id', '')}</td>
+                    <td><span class="badge {badge_class}">{sev}</span></td>
+                    <td>{vuln.get('nombre', '')}</td>
+                    <td>{vuln.get('componente', '')}</td>
+                    <td>{vuln.get('cvss_estimate', 'N/A')}</td>
+                </tr>
+"""
+            vulns_html += """            </table>
+        </div>
+
+        <h2>Detalle de Vulnerabilidades</h2>
+"""
+            for vuln in vulns:
+                sev = vuln.get('severidad', 'UNKNOWN')
+                badge_class = {
+                    'CRITICAL': 'badge-danger',
+                    'HIGH': 'badge-high',
+                    'MEDIUM': 'badge-medium',
+                    'LOW': 'badge-low',
+                    'INFO': 'badge-info',
+                }.get(sev, 'badge-info')
+                vulns_html += f"""
+        <div class="card">
+            <h3><span class="badge {badge_class}">{sev}</span> {vuln.get('id', '')} - {vuln.get('nombre', '')}</h3>
+            <p><strong>Componente:</strong> {vuln.get('componente', '')}</p>
+            <p><strong>Descripcion:</strong> {vuln.get('descripcion', '')}</p>
+            <p><strong>Evidencia:</strong> <code>{vuln.get('evidencia', '')}</code></p>
+            <p><strong>Recomendacion:</strong> {vuln.get('recomendacion', '')}</p>
+            <p><strong>CVSS Estimate:</strong> {vuln.get('cvss_estimate', 'N/A')}</p>
+        </div>
+"""
 
         axfr_html = ""
         if axfr and axfr_records:
@@ -268,7 +374,11 @@ class Reporter:
         .badge {{ display: inline-block; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }}
         .badge-success {{ background: #065f46; color: #6ee7b7; }}
         .badge-danger {{ background: #7f1d1d; color: #fca5a5; }}
-        .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
+        .badge-high {{ background: #7c2d12; color: #fdba74; }}
+        .badge-medium {{ background: #713f12; color: #fde047; }}
+        .badge-low {{ background: #14532d; color: #86efac; }}
+        .badge-info {{ background: #1e3a5f; color: #93c5fd; }}
+        .stats {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
         .stat {{ background: #1e293b; padding: 1.5rem; border-radius: 8px; text-align: center; }}
         .stat-number {{ font-size: 2rem; font-weight: bold; color: #38bdf8; }}
         .stat-label {{ color: #94a3b8; font-size: 0.875rem; margin-top: 0.25rem; }}
@@ -360,6 +470,7 @@ class Reporter:
 """
 
         html += f"""
+{vulns_html}
 {axfr_html}
 """
 

@@ -29,7 +29,9 @@ from reporter import Reporter
 @click.option('--tipos-dns', default='A', help='Tipos DNS a consultar separados por coma (A,AAAA,CNAME)')
 @click.option('--no-wildcard', is_flag=True, help='Desactivar deteccion de wildcards')
 @click.option('-p', '--permutations', is_flag=True, help='Generar permutaciones de subdominios encontrados')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations):
+@click.option('--passive', is_flag=True, help='Incluir fuentes pasivas (crt.sh, HackerTarget, etc)')
+@click.option('--passive-only', is_flag=True, help='Solo fuentes pasivas, sin consultas DNS directas')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -38,6 +40,8 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
         python main.py example.com -w wordlists/subdomains-medium.txt
         python main.py example.com -w wordlists/subdomains-medium.txt -t 30 -o json
         python main.py example.com -w wordlists/subdomains-medium.txt -p --tipos-dns A,AAAA,CNAME
+        python main.py example.com --passive
+        python main.py example.com --passive-only
         python main.py example.com --no-axfr --no-reverse -v
     """
 
@@ -59,6 +63,8 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             tipos_dns=tipos_dns_list,
             detectar_wildcards=not no_wildcard,
             con_permutaciones=permutations,
+            solo_pasivo=passive_only,
+            con_pasivo=passive,
         )
 
         if output in ['json', 'all']:

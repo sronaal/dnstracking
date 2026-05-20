@@ -10,6 +10,7 @@ from datetime import datetime
 from typing import List, Dict, Optional
 from resolver import DNSResolver
 from subdomain_scanner import SubdomainScanner
+from sources import PassiveSources
 
 import dns.zone
 import dns.query
@@ -29,6 +30,7 @@ class DNSScanner:
             'fecha': datetime.now().isoformat(),
             'basicos': {},
             'subdominios': [],
+            'subdominios_pasivos': [],
             'axfr': False,
             'axfr_records': [],
             'reverse_lookups': {},
@@ -64,6 +66,17 @@ class DNSScanner:
         encontrados = sum(1 for v in resultados.values() if v)
         print(f"\n[+] Tipos de registro encontrados: {encontrados}/{len(resultados)}")
         return resultados
+
+    def enumeracion_pasiva(self) -> List[Dict]:
+        """Enumeracion de subdominios via fuentes pasivas"""
+        print(f"\n[+] Enumeracion pasiva de subdominios")
+        print("-" * 60)
+
+        passive = PassiveSources(self.dominio, timeout=10)
+        subdominios_pasivos = passive.enumerar_todas()
+
+        self.resultados['subdominios_pasivos'] = subdominios_pasivos
+        return subdominios_pasivos
 
     def enumerar_subdominios(
         self,
@@ -195,6 +208,8 @@ class DNSScanner:
         tipos_dns: List[str] = None,
         detectar_wildcards: bool = True,
         con_permutaciones: bool = False,
+        solo_pasivo: bool = False,
+        con_pasivo: bool = False,
     ) -> Dict:
         print("\n" + "=" * 60)
         print(f"  DNSTRACKING - Escaner DNS")
@@ -202,20 +217,37 @@ class DNSScanner:
         print(f"  Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
 
+        if solo_pasivo:
+            print("\n[*] Modo solo pasivo - Sin consultas DNS directas")
+            self.enumeracion_pasiva()
+            print("\n" + "=" * 60)
+            print("  ESCANEO COMPLETADO")
+            print("=" * 60)
+            self._mostrar_resumen()
+            return self.resultados
+
         print("\n[*] Validando dominio...")
         if not self.resolver.es_dominio_valido(self.dominio):
             print(f"[-] Dominio invalido o no resoluble: {self.dominio}")
             return self.resultados
         print("[OK] Dominio valido\n")
 
-        print("[FASE 1/4] Enumeracion de registros basicos")
+        print("[FASE 1/5] Enumeracion de registros basicos")
         try:
             self.enumerar_registros_basicos()
         except Exception as e:
             print(f"[-] Error en enumeracion basica: {e}")
 
+        if con_pasivo:
+            print("\n[FASE 2/5] Enumeracion pasiva (APIs externas)")
+            try:
+                self.enumeracion_pasiva()
+            except Exception as e:
+                print(f"[-] Error en enumeracion pasiva: {e}")
+
         if wordlist:
-            print("\n[FASE 2/4] Enumeracion de subdominios")
+            fase_num = "3/5" if con_pasivo else "2/4"
+            print(f"\n[FASE {fase_num}] Enumeracion de subdominios")
             try:
                 self.enumerar_subdominios(
                     wordlist=wordlist,
@@ -274,7 +306,11 @@ class DNSScanner:
         print(f"  Registros DNS encontrados: {registros_con_datos} tipos")
 
         num_subdominios = len(self.resultados['subdominios'])
-        print(f"  Subdominios encontrados: {num_subdominios}")
+        print(f"  Subdominios (activo): {num_subdominios}")
+
+        num_pasivos = len(self.resultados.get('subdominios_pasivos', []))
+        if num_pasivos > 0:
+            print(f"  Subdominios (pasivo): {num_pasivos}")
 
         if self.resultados['axfr']:
             print(f"  AXFR: EXITOSO ({len(self.resultados['axfr_records'])} registros)")

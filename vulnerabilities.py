@@ -6,6 +6,7 @@ Analiza la configuracion DNS en busca de problemas de seguridad
 import re
 import ipaddress
 import requests
+import dns.resolver
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
@@ -476,6 +477,244 @@ class VulnerabilityScanner:
 
         return findings
 
+    def check_caa(self) -> Optional[Finding]:
+        """Verifica si CAA esta configurado"""
+        caa_records = self.resultados.get('basicos', {}).get('CAA', [])
+
+        if not caa_records:
+            finding = Finding(
+                id=self._next_id(),
+                nombre="CAA Record Missing",
+                severidad="MEDIUM",
+                componente="CAA",
+                descripcion="No se encontro registro CAA para el dominio. "
+                           "Sin CAA, cualquier autoridad de certificacion puede emitir "
+                           "certificados SSL/TLS para este dominio.",
+                evidencia="No se encontraron registros CAA",
+                recomendacion="Agregar registros CAA para restringir las CAs autorizadas: "
+                             "0 issue \"letsencrypt.org\" o 0 issue \"digicert.com\"",
+                cvss_estimate="4.0",
+            )
+            self._add_finding(finding)
+            return finding
+
+        return None
+
+    def check_low_ttl(self) -> List[Finding]:
+        """Verifica TTLs peligrosamente bajos (riesgo de DNS rebinding)"""
+        findings = []
+        basicos = self.resultados.get('basicos', {})
+
+        low_ttl_domains = []
+        threshold = 300
+
+        for tipo, valores in basicos.items():
+            if tipo in ('A', 'AAAA', 'CNAME', 'MX', 'NS'):
+                for valor in valores:
+                    pass
+
+        ns_servers = basicos.get('NS', [])
+        for ns in ns_servers:
+            try:
+                soa_records = self.resolver.resolver_registro(self.dominio, 'SOA')
+                for soa in soa_records:
+                    parts = soa.split()
+                    if len(parts) >= 5:
+                        try:
+                            ttl_value = int(parts[3])
+                            if ttl_value < threshold:
+                                low_ttl_domains.append({
+                                    'tipo': 'SOA',
+                                    'ttl': ttl_value,
+                                    'valor': soa,
+                                })
+                        except (ValueError, IndexError):
+                            pass
+            except Exception:
+                pass
+
+        for item in low_ttl_domains:
+            finding = Finding(
+                id=self._next_id(),
+                nombre=f"Low TTL Detected ({item['ttl']}s)",
+                severidad="LOW",
+                componente="TTL",
+                descripcion=f"El registro {item['tipo']} tiene un TTL de {item['ttl']} segundos "
+                           f"(umbral: {threshold}s). TTLs bajos facilitan ataques de DNS rebinding "
+                           f"y aumentan la carga en los servidores DNS.",
+                evidencia=f"TTL: {item['ttl']}s | Valor: {item['valor'][:80]}",
+                recomendacion="Aumentar el TTL a al menos 300 segundos (5 minutos) para "
+                             "registros estaticos. Usar TTLs bajos solo durante migraciones.",
+                cvss_estimate="2.0",
+            )
+            findings.append(finding)
+            self._add_finding(finding)
+
+        return findings
+
+    def check_private_ns(self) -> List[Finding]:
+        """Verifica si los nameservers apuntan a IPs privadas"""
+        findings = []
+        ns_records = self.resultados.get('basicos', {}).get('NS', [])
+
+        private_ranges = [
+            ipaddress.ip_network('10.0.0.0/8'),
+            ipaddress.ip_network('172.16.0.0/12'),
+            ipaddress.ip_network('192.168.0.0/16'),
+            ipaddress.ip_network('127.0.0.0/8'),
+            ipaddress.ip_network('100.64.0.0/10'),
+        ]
+
+        for ns in ns_records:
+            ns_clean = ns.rstrip('.')
+            try:
+                ips = self.resolver.resolver_registro(ns_clean, 'A')
+                for ip_str in ips:
+                    try:
+                        ip = ipaddress.ip_address(ip_str)
+                        for network in private_ranges:
+                            if ip in network:
+                                finding = Finding(
+                                    id=self._next_id(),
+                                    nombre=f"Private IP in Nameserver ({ns})",
+                                    severidad="HIGH",
+                                    componente="NS",
+                                    descripcion=f"El nameserver {ns} resuelve a una IP privada "
+                                               f"({ip_str}). Esto indica una configuracion incorrecta "
+                                               f"que puede causar problemas de resolucion externa.",
+                                    evidencia=f"NS: {ns} -> {ip_str} (RFC1918/private)",
+                                    recomendacion="Usar IPs publicas para los nameservers autoritativos. "
+                                                 "Los nameservers deben ser accesibles desde Internet.",
+                                    cvss_estimate="5.0",
+                                )
+                                findings.append(finding)
+                                self._add_finding(finding)
+                    except ValueError:
+                        pass
+            except Exception:
+                pass
+
+        return findings
+
+    def check_mx_external(self) -> Optional[Finding]:
+        """Verifica si los MX apuntan a servicios de email genericos"""
+        mx_records = self.resultados.get('basicos', {}).get('MX', [])
+
+        external_services = {
+            'google.com': 'Google Workspace',
+            'outlook.com': 'Microsoft 365',
+            'office365.com': 'Microsoft 365',
+            'protection.outlook.com': 'Microsoft 365',
+            'mx.hubspot.com': 'HubSpot',
+            'zendesk.com': 'Zendesk',
+            'freshdesk.com': 'Freshdesk',
+            'mail.zoho.com': 'Zoho Mail',
+        }
+
+        for mx in mx_records:
+            mx_lower = mx.lower()
+            for domain, service in external_services.items():
+                if domain in mx_lower:
+                    finding = Finding(
+                        id=self._next_id(),
+                        nombre=f"External Email Service ({service})",
+                        severidad="INFO",
+                        componente="MX",
+                        descripcion=f"El dominio usa {service} para el manejo de email "
+                                   f"(MX: {mx}). Esto es informativo, no una vulnerabilidad.",
+                        evidencia=f"MX: {mx}",
+                        recomendacion="Asegurar que SPF, DKIM y DMARC esten correctamente "
+                                     "configurados para el servicio de email externo.",
+                        cvss_estimate="0.0",
+                    )
+                    self._add_finding(finding)
+                    return finding
+
+        return None
+
+    def check_open_resolver(self) -> List[Finding]:
+        """Verifica si los nameservers son resolvers abiertos"""
+        findings = []
+        ns_records = self.resultados.get('basicos', {}).get('NS', [])
+
+        for ns in ns_records:
+            ns_clean = ns.rstrip('.')
+            try:
+                ips = self.resolver.resolver_registro(ns_clean, 'A')
+                for ip_str in ips:
+                    try:
+                        test_resolver = dns.resolver.Resolver()
+                        test_resolver.nameservers = [ip_str]
+                        test_resolver.timeout = 3
+                        test_resolver.lifetime = 3
+
+                        test_resolver.resolve('google.com', 'A')
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return findings
+
+    def check_amplification(self) -> Optional[Finding]:
+        """Verifica el factor de amplificacion DNS"""
+        ns_records = self.resultados.get('basicos', {}).get('NS', [])
+
+        if not ns_records:
+            return None
+
+        findings = []
+        for ns in ns_records:
+            ns_clean = ns.rstrip('.')
+            try:
+                ips = self.resolver.resolver_registro(ns_clean, 'A')
+                for ip_str in ips:
+                    try:
+                        test_resolver = dns.resolver.Resolver()
+                        test_resolver.nameservers = [ip_str]
+                        test_resolver.timeout = 3
+                        test_resolver.lifetime = 3
+
+                        resp = test_resolver.resolve(self.dominio, 'ANY')
+                        response_size = sum(len(str(r)) for r in resp)
+                        query_size = len(self.dominio) + 4
+
+                        if query_size > 0:
+                            amplification_factor = response_size / query_size
+                            if amplification_factor > 10:
+                                finding = Finding(
+                                    id=self._next_id(),
+                                    nombre=f"DNS Amplification Risk ({ns})",
+                                    severidad="MEDIUM",
+                                    componente="AMPLIFICATION",
+                                    descripcion=f"El nameserver {ns} responde a consultas ANY con "
+                                               f"un factor de amplificacion de {amplification_factor:.1f}x. "
+                                               f"Esto puede ser usado para ataques DDoS de amplificacion DNS.",
+                                    evidencia=f"NS: {ns} | Query: {query_size} bytes | "
+                                             f"Response: {response_size} bytes | "
+                                             f"Factor: {amplification_factor:.1f}x",
+                                    recomendacion="Deshabilitar respuestas ANY o implementar rate limiting "
+                                                 "en el servidor DNS. Usar Response Rate Limiting (RRL).",
+                                    cvss_estimate="5.0",
+                                )
+                                findings.append(finding)
+                                self._add_finding(finding)
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+
+        return findings if findings else None
+
+    def run_infrastructure(self):
+        """Ejecuta todos los checks de infraestructura"""
+        print(f"\n  [*] Verificando infraestructura DNS...")
+        self.check_caa()
+        self.check_low_ttl()
+        self.check_private_ns()
+        self.check_mx_external()
+        self.check_amplification()
+
     def run_email_security(self):
         """Ejecuta todos los checks de seguridad de email"""
         print(f"\n  [*] Verificando seguridad de email...")
@@ -483,7 +722,7 @@ class VulnerabilityScanner:
         self.check_dmarc()
         self.check_dkim()
 
-    def run_all(self, check_takeover: bool = True) -> List[Finding]:
+    def run_all(self, check_takeover: bool = True, check_infrastructure: bool = True) -> List[Finding]:
         """Ejecuta todas las verificaciones de vulnerabilidades"""
         print(f"\n[+] Analisis de vulnerabilidades DNS para {self.dominio}")
         print("-" * 60)
@@ -491,6 +730,9 @@ class VulnerabilityScanner:
         self.check_axfr()
         self.check_dnssec()
         self.run_email_security()
+
+        if check_infrastructure:
+            self.run_infrastructure()
 
         if check_takeover:
             self.check_subdomain_takeover()

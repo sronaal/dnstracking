@@ -23,18 +23,25 @@ from reporter import Reporter
 @click.option('-o', '--output', default='txt', type=click.Choice(['txt', 'json', 'csv', 'html', 'all']), help='Formato de salida')
 @click.option('--timeout', default=5, type=int, help='Timeout en segundos para consultas DNS')
 @click.option('--max-sub', default=None, type=int, help='Limitar numero de subdominios encontrados')
-@click.option('--delay', default=0.0, type=float, help='Delay en segundos entre consultas de subdominios')
+@click.option('--delay', default=0.0, type=float, help='Delay en segundos entre lotes de consultas')
 @click.option('--dns-server', default=None, help='Servidor DNS personalizado')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server):
+@click.option('-t', '--threads', default=20, type=int, help='Numero de hilos concurrentes (default: 20)')
+@click.option('--tipos-dns', default='A', help='Tipos DNS a consultar separados por coma (A,AAAA,CNAME)')
+@click.option('--no-wildcard', is_flag=True, help='Desactivar deteccion de wildcards')
+@click.option('-p', '--permutations', is_flag=True, help='Generar permutaciones de subdominios encontrados')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
     Ejemplos:
         python main.py google.com
-        python main.py example.com -w wordlists/subdomains-small.txt
-        python main.py example.com -w wordlists/subdomains-small.txt -o json
+        python main.py example.com -w wordlists/subdomains-medium.txt
+        python main.py example.com -w wordlists/subdomains-medium.txt -t 30 -o json
+        python main.py example.com -w wordlists/subdomains-medium.txt -p --tipos-dns A,AAAA,CNAME
         python main.py example.com --no-axfr --no-reverse -v
     """
+
+    tipos_dns_list = [t.strip().upper() for t in tipos_dns.split(',')] if tipos_dns else ['A']
 
     try:
         scanner = DNSScanner(dominio, verbose=verbose, timeout=timeout)
@@ -48,6 +55,10 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             reverse_lookup=not no_reverse,
             max_subdominios=max_sub,
             delay=delay,
+            threads=threads,
+            tipos_dns=tipos_dns_list,
+            detectar_wildcards=not no_wildcard,
+            con_permutaciones=permutations,
         )
 
         if output in ['json', 'all']:

@@ -1,5 +1,5 @@
 """
-Módulo principal del escáner DNS
+Modulo principal del escaner DNS
 Coordina todas las operaciones de escaneo
 """
 
@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Optional
 from resolver import DNSResolver
+from subdomain_scanner import SubdomainScanner
 
 import dns.zone
 import dns.query
@@ -16,12 +17,13 @@ import dns.exception
 
 
 class DNSScanner:
-    """Escáner DNS principal"""
+    """Escaner DNS principal"""
 
     def __init__(self, dominio: str, verbose: bool = False, timeout: int = 5):
         self.dominio = dominio.rstrip('.')
         self.verbose = verbose
         self.resolver = DNSResolver(timeout=timeout)
+        self.subdomain_scanner = SubdomainScanner(self.resolver, self.dominio, verbose=verbose)
         self.resultados = {
             'dominio': self.dominio,
             'fecha': datetime.now().isoformat(),
@@ -63,54 +65,56 @@ class DNSScanner:
         print(f"\n[+] Tipos de registro encontrados: {encontrados}/{len(resultados)}")
         return resultados
 
-    def enumerar_subdominios(self, wordlist: str, max_resultados: int = None, delay: float = 0.0) -> List[Dict]:
+    def enumerar_subdominios(
+        self,
+        wordlist: str,
+        threads: int = 20,
+        tipos_dns: List[str] = None,
+        max_resultados: int = None,
+        delay: float = 0.0,
+        detectar_wildcards: bool = True,
+        con_permutaciones: bool = False
+    ) -> List[Dict]:
         print(f"\n[+] Enumerando subdominios de {self.dominio}")
         print("-" * 60)
 
-        wordlist_path = wordlist
-        if not os.path.exists(wordlist_path):
-            base_dir = os.path.dirname(os.path.abspath(__file__))
-            wordlist_path = os.path.join(base_dir, 'wordlists', wordlist)
+        subdominios = self.subdomain_scanner.escanear_con_threading(
+            wordlist=wordlist,
+            threads=threads,
+            tipos_dns=tipos_dns,
+            max_resultados=max_resultados,
+            delay=delay,
+            detectar_wildcards=detectar_wildcards,
+        )
 
-        if not os.path.exists(wordlist_path):
-            print(f"[-] Wordlist no encontrada: {wordlist}")
-            return []
+        if con_permutaciones and subdominios:
+            print(f"\n  [*] Generando permutaciones de {len(subdominios)} subdominios encontrados...")
+            permutaciones = self.subdomain_scanner.generar_permutaciones(subdominios)
+            print(f"  [*] {len(permutaciones)} permutaciones generadas")
 
-        with open(wordlist_path, 'r') as f:
-            palabras = [linea.strip() for linea in f if linea.strip()]
+            if permutaciones:
+                temp_wordlist = f"/tmp/dnstraking_permutations_{self.dominio}.txt"
+                with open(temp_wordlist, 'w') as f:
+                    f.write('\n'.join(permutaciones))
 
-        subdominios = []
-        total = len(palabras)
-        print(f"[*] Probando {total} palabras...\n")
+                permutaciones_encontradas = self.subdomain_scanner.escanear_con_threading(
+                    wordlist=temp_wordlist,
+                    threads=threads,
+                    tipos_dns=tipos_dns,
+                    detectar_wildcards=detectar_wildcards,
+                )
 
-        for i, palabra in enumerate(palabras, 1):
-            subdominio = f"{palabra}.{self.dominio}"
+                existentes = {s['dominio'] for s in subdominios}
+                for p in permutaciones_encontradas:
+                    if p['dominio'] not in existentes:
+                        subdominios.append(p)
+                        existentes.add(p['dominio'])
 
-            try:
-                ips = self.resolver.resolver_registro(subdominio, 'A')
-                if ips:
-                    print(f"  [FOUND] {subdominio}")
-                    for ip in ips:
-                        print(f"          \u2514\u2500 {ip}")
-                    subdominios.append({
-                        'dominio': subdominio,
-                        'ips': ips
-                    })
-                    if max_resultados and len(subdominios) >= max_resultados:
-                        break
-            except Exception:
-                pass
+                try:
+                    os.remove(temp_wordlist)
+                except Exception:
+                    pass
 
-            if delay > 0:
-                time.sleep(delay)
-
-            if i % 50 == 0:
-                self._mostrar_progreso(i, total, "  Progreso")
-
-        if total >= 50:
-            print()
-
-        print(f"\n[+] Subdominios encontrados: {len(subdominios)}")
         self.resultados['subdominios'] = subdominios
         return subdominios
 
@@ -151,11 +155,11 @@ class DNSScanner:
                 except dns.exception.TransferFailed:
                     self.log(f"Transferencia rechazada en {ns}")
                 except ConnectionRefusedError:
-                    self.log(f"Conexi\u00f3n rechazada en {ns}")
+                    self.log(f"Conexion rechazada en {ns}")
                 except Exception as e:
                     self.log(f"Error en {ns}: {e}")
 
-            print("[-] AXFR no permitido en ning\u00fan servidor")
+            print("[-] AXFR no permitido en ningun servidor")
             return False
 
         except Exception as e:
@@ -163,7 +167,7 @@ class DNSScanner:
             return False
 
     def busquedas_inversas(self, ips: List[str]) -> Dict[str, Optional[str]]:
-        print(f"\n[+] Realizando b\u00fasquedas inversas")
+        print(f"\n[+] Realizando busquedas inversas")
         print("-" * 60)
 
         resultados_reverse = {}
@@ -180,40 +184,54 @@ class DNSScanner:
         print(f"\n[+] Reverse lookups exitosos: {encontrados}/{len(ips)}")
         return resultados_reverse
 
-    def escanear_completo(self,
-                          wordlist: str = None,
-                          intentar_axfr: bool = True,
-                          reverse_lookup: bool = False,
-                          max_subdominios: int = None,
-                          delay: float = 0.0) -> Dict:
+    def escanear_completo(
+        self,
+        wordlist: str = None,
+        intentar_axfr: bool = True,
+        reverse_lookup: bool = False,
+        max_subdominios: int = None,
+        delay: float = 0.0,
+        threads: int = 20,
+        tipos_dns: List[str] = None,
+        detectar_wildcards: bool = True,
+        con_permutaciones: bool = False,
+    ) -> Dict:
         print("\n" + "=" * 60)
-        print(f"  DNSTRACKING - Esc\u00e1ner DNS")
+        print(f"  DNSTRACKING - Escaner DNS")
         print(f"  Dominio: {self.dominio}")
         print(f"  Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
 
         print("\n[*] Validando dominio...")
         if not self.resolver.es_dominio_valido(self.dominio):
-            print(f"[-] Dominio inv\u00e1lido o no resoluble: {self.dominio}")
+            print(f"[-] Dominio invalido o no resoluble: {self.dominio}")
             return self.resultados
-        print("[OK] Dominio v\u00e1lido\n")
+        print("[OK] Dominio valido\n")
 
-        print("[FASE 1/4] Enumeraci\u00f3n de registros b\u00e1sicos")
+        print("[FASE 1/4] Enumeracion de registros basicos")
         try:
             self.enumerar_registros_basicos()
         except Exception as e:
-            print(f"[-] Error en enumeraci\u00f3n b\u00e1sica: {e}")
+            print(f"[-] Error en enumeracion basica: {e}")
 
         if wordlist:
-            print("\n[FASE 2/4] Enumeraci\u00f3n de subdominios")
+            print("\n[FASE 2/4] Enumeracion de subdominios")
             try:
-                self.enumerar_subdominios(wordlist, max_resultados=max_subdominios, delay=delay)
+                self.enumerar_subdominios(
+                    wordlist=wordlist,
+                    threads=threads,
+                    tipos_dns=tipos_dns,
+                    max_resultados=max_subdominios,
+                    delay=delay,
+                    detectar_wildcards=detectar_wildcards,
+                    con_permutaciones=con_permutaciones,
+                )
             except KeyboardInterrupt:
-                print("\n[-] Enumeraci\u00f3n de subdominios cancelada")
+                print("\n[-] Enumeracion de subdominios cancelada")
             except Exception as e:
-                print(f"[-] Error en enumeraci\u00f3n de subdominios: {e}")
+                print(f"[-] Error en enumeracion de subdominios: {e}")
         else:
-            print("\n[FASE 2/4] Enumeraci\u00f3n de subdominios - OMITIDA")
+            print("\n[FASE 2/4] Enumeracion de subdominios - OMITIDA")
 
         if intentar_axfr:
             print("\n[FASE 3/4] Transferencia de zona DNS")
@@ -227,18 +245,18 @@ class DNSScanner:
             print("\n[FASE 3/4] Transferencia de zona - OMITIDA")
 
         if reverse_lookup:
-            print("\n[FASE 4/4] B\u00fasquedas inversas")
+            print("\n[FASE 4/4] Busquedas inversas")
             ips_a_resolver = []
             for tipo, valores in self.resultados['basicos'].items():
                 if tipo in ('A', 'AAAA'):
                     ips_a_resolver.extend(valores)
             for sub in self.resultados['subdominios']:
-                ips_a_resolver.extend(sub['ips'])
+                ips_a_resolver.extend(sub.get('ips', []))
             ips_unicas = list(set(ips_a_resolver))
             if ips_unicas:
                 self.busquedas_inversas(ips_unicas)
         else:
-            print("\n[FASE 4/4] B\u00fasquedas inversas - OMITIDA")
+            print("\n[FASE 4/4] Busquedas inversas - OMITIDA")
 
         print("\n" + "=" * 60)
         print("  ESCANEO COMPLETADO")

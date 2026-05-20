@@ -161,15 +161,6 @@ class SubdomainScanner:
     ) -> List[Dict]:
         """
         Escaneo de subdominios con threading
-
-        Args:
-            wordlist: Archivo o nombre de wordlist
-            threads: Numero de hilos concurrentes
-            tipos_dns: Tipos DNS a consultar (default: ['A'])
-            max_resultados: Limite de resultados
-            delay: Delay entre lotes
-            detectar_wildcards: Detectar y filtrar wildcards
-            mostrar_progreso: Mostrar barra de progreso
         """
         if tipos_dns is None:
             tipos_dns = ['A']
@@ -191,9 +182,6 @@ class SubdomainScanner:
         self.total_probados = 0
         self.encontrados_count = 0
         self.start_time = time.time()
-
-        wildcard_ips = set()
-        wildcard_cnames = set()
 
         if detectar_wildcards:
             wildcard_ips, wildcard_cnames = self.detectar_wildcard()
@@ -240,7 +228,7 @@ class SubdomainScanner:
 
                     with self.lock:
                         self.total_probados += 1
-                        if mostrar_progreso and self.total_probados % 10 == 0:
+                        if mostrar_progreso and self.total_probados % 50 == 0:
                             self._actualizar_progreso(
                                 self.total_probados, total, self.encontrados_count
                             )
@@ -258,35 +246,49 @@ class SubdomainScanner:
 
         return self.encontrados
 
-    def generar_permutaciones(self, subdominios: List[Dict]) -> List[str]:
-        """Genera permutaciones de subdominios encontrados"""
+    def generar_permutaciones_avanzadas(self, subdominios: List[Dict]) -> List[str]:
+        """
+        Genera permutaciones avanzadas de subdominios encontrados
+        Incluye prefijos, sufijos, combinaciones y variaciones
+        """
         prefijos = [
             'dev', 'staging', 'test', 'qa', 'uat', 'prod',
-            'api', 'v2', 'v3', 'new', 'old', 'backup',
+            'api', 'v2', 'v3', 'v4', 'new', 'old', 'backup',
             'internal', 'private', 'public', 'demo', 'sandbox',
             'pre', 'preprod', 'stage', 'acc', 'acceptance',
+            'ci', 'cd', 'build', 'deploy', 'jenkins',
+            'admin', 'manage', 'mgmt', 'console', 'dashboard',
+            'app', 'web', 'mobile', 'ios', 'android',
         ]
         sufijos = [
             '-dev', '-staging', '-test', '-api', '-v2', '-backup',
             '-old', '-new', '-prod', '-internal', '-demo',
+            '-admin', '-app', '-web', '-mobile', '-ci', '-cd',
+            '2', '3', '01', '02', '03',
         ]
+        separadores = ['', '-', '.', '_']
 
-        palabras_base = []
+        palabras_base = set()
         for sub in subdominios:
             nombre = sub['dominio'].replace(f'.{self.dominio}', '')
             partes = nombre.split('.')
-            palabras_base.extend(partes)
+            palabras_base.update(partes)
+            palabras_base.add(nombre)
 
-        palabras_base = list(set(palabras_base))
-
-        permutaciones = []
+        palabras_base = list(palabras_base)
+        permutaciones = set()
 
         for palabra in palabras_base:
             for prefijo in prefijos:
-                permutaciones.append(f"{prefijo}-{palabra}")
-                permutaciones.append(f"{prefijo}.{palabra}")
+                for sep in separadores:
+                    permutaciones.add(f"{prefijo}{sep}{palabra}")
 
             for sufijo in sufijos:
-                permutaciones.append(f"{palabra}{sufijo}")
+                permutaciones.add(f"{palabra}{sufijo}")
 
-        return list(set(permutaciones))
+            for otra in palabras_base:
+                if otra != palabra:
+                    permutaciones.add(f"{palabra}-{otra}")
+                    permutaciones.add(f"{palabra}.{otra}")
+
+        return list(permutaciones)

@@ -101,8 +101,8 @@ class DNSScanner:
         )
 
         if con_permutaciones and subdominios:
-            print(f"\n  [*] Generando permutaciones de {len(subdominios)} subdominios encontrados...")
-            permutaciones = self.subdomain_scanner.generar_permutaciones(subdominios)
+            print(f"\n  [*] Generando permutaciones avanzadas de {len(subdominios)} subdominios...")
+            permutaciones = self.subdomain_scanner.generar_permutaciones_avanzadas(subdominios)
             print(f"  [*] {len(permutaciones)} permutaciones generadas")
 
             if permutaciones:
@@ -110,18 +110,24 @@ class DNSScanner:
                 with open(temp_wordlist, 'w') as f:
                     f.write('\n'.join(permutaciones))
 
+                print(f"  [*] Escaneando permutaciones con {threads} hilos...")
                 permutaciones_encontradas = self.subdomain_scanner.escanear_con_threading(
                     wordlist=temp_wordlist,
                     threads=threads,
                     tipos_dns=tipos_dns,
                     detectar_wildcards=detectar_wildcards,
+                    mostrar_progreso=True,
                 )
 
                 existentes = {s['dominio'] for s in subdominios}
+                nuevos = 0
                 for p in permutaciones_encontradas:
                     if p['dominio'] not in existentes:
                         subdominios.append(p)
                         existentes.add(p['dominio'])
+                        nuevos += 1
+
+                print(f"\n  [+] Permutaciones nuevas encontradas: {nuevos}")
 
                 try:
                     os.remove(temp_wordlist)

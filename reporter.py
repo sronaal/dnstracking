@@ -1,5 +1,5 @@
 """
-Módulo para generar reportes en diferentes formatos
+Modulo para generar reportes en diferentes formatos
 """
 
 import json
@@ -40,8 +40,10 @@ class Reporter:
         fecha = resultados.get('fecha', datetime.now().isoformat())
         basicos = resultados.get('basicos', {})
         subdominios = resultados.get('subdominios', [])
+        subdominios_pasivos = resultados.get('subdominios_pasivos', [])
         axfr = resultados.get('axfr', False)
         axfr_records = resultados.get('axfr_records', [])
+        stats = resultados.get('estadisticas', {})
 
         registros_html = ""
         for tipo, valores in basicos.items():
@@ -53,8 +55,16 @@ class Reporter:
 
         subdominios_html = ""
         for sub in subdominios:
-            ips = ', '.join(sub['ips'])
-            subdominios_html += f"                <tr><td>{sub['dominio']}</td><td>{ips}</td></tr>\n"
+            ips = ', '.join(sub.get('ips', []))
+            fuentes = ', '.join(sub.get('fuentes', ['activo']))
+            subdominios_html += f"                <tr><td>{sub['dominio']}</td><td>{ips}</td><td>{fuentes}</td></tr>\n"
+
+        subdominios_pasivos_html = ""
+        if subdominios_pasivos:
+            for sub in subdominios_pasivos:
+                ips = ', '.join(sub.get('ips', []))
+                fuentes = ', '.join(sub.get('fuentes', []))
+                subdominios_pasivos_html += f"                <tr><td>{sub['dominio']}</td><td>{ips}</td><td>{fuentes}</td></tr>\n"
 
         axfr_html = ""
         if axfr and axfr_records:
@@ -74,6 +84,13 @@ class Reporter:
 """
 
         num_registros = len([t for t, v in basicos.items() if v])
+        total_subdominios = len(subdominios) + len(subdominios_pasivos)
+        tiempo_total = stats.get('tiempo_total', 0)
+
+        tiempos_html = ""
+        if stats.get('tiempos_fases'):
+            for fase, tiempo in stats['tiempos_fases'].items():
+                tiempos_html += f"                <tr><td>{fase}</td><td>{tiempo:.2f}s</td></tr>\n"
 
         html = f"""<!DOCTYPE html>
 <html lang="es">
@@ -119,12 +136,16 @@ class Reporter:
                 <div class="stat-label">Tipos de Registro</div>
             </div>
             <div class="stat">
-                <div class="stat-number">{len(subdominios)}</div>
-                <div class="stat-label">Subdominios</div>
+                <div class="stat-number">{total_subdominios}</div>
+                <div class="stat-label">Subdominios Totales</div>
             </div>
             <div class="stat">
                 <div class="stat-number">{'SI' if axfr else 'NO'}</div>
                 <div class="stat-label">AXFR Exitoso</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number">{tiempo_total:.1f}s</div>
+                <div class="stat-label">Tiempo Total</div>
             </div>
         </div>
 
@@ -132,13 +153,39 @@ class Reporter:
         <div class="card">
 {registros_html}        </div>
 
-        <h2>Subdominios Encontrados</h2>
+        <h2>Subdominios Activos</h2>
         <div class="card">
             <table>
-                <tr><th>Subdominio</th><th>Direcciones IP</th></tr>
+                <tr><th>Subdominio</th><th>Direcciones IP</th><th>Fuente</th></tr>
 {subdominios_html}            </table>
         </div>
+"""
+
+        if subdominios_pasivos:
+            html += f"""
+        <h2>Subdominios Pasivos (APIs)</h2>
+        <div class="card">
+            <table>
+                <tr><th>Subdominio</th><th>Direcciones IP</th><th>Fuente</th></tr>
+{subdominios_pasivos_html}            </table>
+        </div>
+"""
+
+        html += f"""
 {axfr_html}
+"""
+
+        if tiempos_html:
+            html += f"""
+        <h2>Estadisticas de Ejecucion</h2>
+        <div class="card">
+            <table>
+                <tr><th>Fase</th><th>Tiempo</th></tr>
+{tiempos_html}            </table>
+        </div>
+"""
+
+        html += f"""
         <div class="footer">
             <p>DNSTRACKING - Escaner DNS | Reporte generado automaticamente</p>
         </div>

@@ -34,7 +34,9 @@ class DNSScanner:
             'axfr': False,
             'axfr_records': [],
             'reverse_lookups': {},
+            'estadisticas': {},
         }
+        self.tiempos_fases = {}
 
     def log(self, msg: str, level: str = 'INFO'):
         if self.verbose:
@@ -48,6 +50,7 @@ class DNSScanner:
         sys.stdout.flush()
 
     def enumerar_registros_basicos(self) -> Dict[str, List[str]]:
+        inicio = time.time()
         print(f"\n[+] Enumerando registros DNS de {self.dominio}")
         print("-" * 60)
 
@@ -65,10 +68,13 @@ class DNSScanner:
 
         encontrados = sum(1 for v in resultados.values() if v)
         print(f"\n[+] Tipos de registro encontrados: {encontrados}/{len(resultados)}")
+
+        self.tiempos_fases['registros_basicos'] = time.time() - inicio
         return resultados
 
     def enumeracion_pasiva(self) -> List[Dict]:
         """Enumeracion de subdominios via fuentes pasivas"""
+        inicio = time.time()
         print(f"\n[+] Enumeracion pasiva de subdominios")
         print("-" * 60)
 
@@ -76,6 +82,7 @@ class DNSScanner:
         subdominios_pasivos = passive.enumerar_todas()
 
         self.resultados['subdominios_pasivos'] = subdominios_pasivos
+        self.tiempos_fases['enumeracion_pasiva'] = time.time() - inicio
         return subdominios_pasivos
 
     def enumerar_subdominios(
@@ -88,6 +95,7 @@ class DNSScanner:
         detectar_wildcards: bool = True,
         con_permutaciones: bool = False
     ) -> List[Dict]:
+        inicio = time.time()
         print(f"\n[+] Enumerando subdominios de {self.dominio}")
         print("-" * 60)
 
@@ -100,7 +108,12 @@ class DNSScanner:
             detectar_wildcards=detectar_wildcards,
         )
 
+        tiempo_base = time.time() - inicio
+        permutaciones_count = 0
+        tiempo_permutaciones = 0
+
         if con_permutaciones and subdominios:
+            perm_inicio = time.time()
             print(f"\n  [*] Generando permutaciones avanzadas de {len(subdominios)} subdominios...")
             permutaciones = self.subdomain_scanner.generar_permutaciones_avanzadas(subdominios)
             print(f"  [*] {len(permutaciones)} permutaciones generadas")
@@ -127,6 +140,7 @@ class DNSScanner:
                         existentes.add(p['dominio'])
                         nuevos += 1
 
+                permutaciones_count = nuevos
                 print(f"\n  [+] Permutaciones nuevas encontradas: {nuevos}")
 
                 try:
@@ -134,10 +148,17 @@ class DNSScanner:
                 except Exception:
                     pass
 
+            tiempo_permutaciones = time.time() - perm_inicio
+
+        self.tiempos_fases['subdominios'] = time.time() - inicio
+        self.tiempos_fases['permutaciones'] = tiempo_permutaciones
         self.resultados['subdominios'] = subdominios
+        self.resultados['estadisticas']['permutaciones_generadas'] = len(permutaciones) if con_permutaciones else 0
+        self.resultados['estadisticas']['permutaciones_nuevas'] = permutaciones_count
         return subdominios
 
     def transferencia_zona(self) -> bool:
+        inicio = time.time()
         print(f"\n[+] Intentando transferencia de zona (AXFR)")
         print("-" * 60)
 
@@ -169,6 +190,7 @@ class DNSScanner:
 
                     self.resultados['axfr'] = True
                     self.resultados['axfr_records'] = axfr_records
+                    self.tiempos_fases['axfr'] = time.time() - inicio
                     return True
 
                 except dns.exception.TransferFailed:
@@ -179,13 +201,16 @@ class DNSScanner:
                     self.log(f"Error en {ns}: {e}")
 
             print("[-] AXFR no permitido en ningun servidor")
+            self.tiempos_fases['axfr'] = time.time() - inicio
             return False
 
         except Exception as e:
             print(f"[-] Error: {e}")
+            self.tiempos_fases['axfr'] = time.time() - inicio
             return False
 
     def busquedas_inversas(self, ips: List[str]) -> Dict[str, Optional[str]]:
+        inicio = time.time()
         print(f"\n[+] Realizando busquedas inversas")
         print("-" * 60)
 
@@ -201,6 +226,8 @@ class DNSScanner:
         self.resultados['reverse_lookups'] = resultados_reverse
         encontrados = sum(1 for v in resultados_reverse.values() if v)
         print(f"\n[+] Reverse lookups exitosos: {encontrados}/{len(ips)}")
+
+        self.tiempos_fases['reverse_lookups'] = time.time() - inicio
         return resultados_reverse
 
     def escanear_completo(
@@ -217,6 +244,8 @@ class DNSScanner:
         solo_pasivo: bool = False,
         con_pasivo: bool = False,
     ) -> Dict:
+        tiempo_total_inicio = time.time()
+
         print("\n" + "=" * 60)
         print(f"  DNSTRACKING - Escaner DNS")
         print(f"  Dominio: {self.dominio}")
@@ -226,6 +255,7 @@ class DNSScanner:
         if solo_pasivo:
             print("\n[*] Modo solo pasivo - Sin consultas DNS directas")
             self.enumeracion_pasiva()
+            self.resultados['estadisticas']['tiempo_total'] = time.time() - tiempo_total_inicio
             print("\n" + "=" * 60)
             print("  ESCANEO COMPLETADO")
             print("=" * 60)
@@ -296,6 +326,12 @@ class DNSScanner:
         else:
             print("\n[FASE 4/4] Busquedas inversas - OMITIDA")
 
+        tiempo_total = time.time() - tiempo_total_inicio
+        self.resultados['estadisticas']['tiempo_total'] = tiempo_total
+        self.resultados['estadisticas']['tiempos_fases'] = {k: round(v, 2) for k, v in self.tiempos_fases.items()}
+        self.resultados['estadisticas']['hilos'] = threads
+        self.resultados['estadisticas']['wildcard_detectado'] = bool(self.subdomain_scanner.wildcard_ips)
+
         print("\n" + "=" * 60)
         print("  ESCANEO COMPLETADO")
         print("=" * 60)
@@ -305,24 +341,55 @@ class DNSScanner:
         return self.resultados
 
     def _mostrar_resumen(self):
-        print("\n[RESUMEN]")
-        print(f"  Dominio: {self.dominio}")
+        print("\n" + "=" * 60)
+        print("  RESUMEN FINAL")
+        print("=" * 60)
+
+        print(f"\n  Dominio: {self.dominio}")
+        print(f"  Fecha: {self.resultados['fecha']}")
 
         registros_con_datos = sum(1 for v in self.resultados['basicos'].values() if v)
-        print(f"  Registros DNS encontrados: {registros_con_datos} tipos")
+        print(f"\n  {'Registros DNS':.<40} {registros_con_datos} tipos")
 
         num_subdominios = len(self.resultados['subdominios'])
-        print(f"  Subdominios (activo): {num_subdominios}")
+        print(f"  {'Subdominios (activo)':.<40} {num_subdominios}")
 
         num_pasivos = len(self.resultados.get('subdominios_pasivos', []))
         if num_pasivos > 0:
-            print(f"  Subdominios (pasivo): {num_pasivos}")
+            print(f"  {'Subdominios (pasivo)':.<40} {num_pasivos}")
+
+        total_subdominios = num_subdominios + num_pasivos
+        print(f"  {'Total subdominios':.<40} {total_subdominios}")
 
         if self.resultados['axfr']:
-            print(f"  AXFR: EXITOSO ({len(self.resultados['axfr_records'])} registros)")
+            print(f"  {'AXFR':.<40} EXITOSO ({len(self.resultados['axfr_records'])} registros)")
         else:
-            print(f"  AXFR: No permitido")
+            print(f"  {'AXFR':.<40} No permitido")
 
         reverse_exitosos = sum(1 for v in self.resultados['reverse_lookups'].values() if v)
         if reverse_exitosos > 0:
-            print(f"  Reverse lookups: {reverse_exitosos} exitosos")
+            print(f"  {'Reverse lookups':.<40} {reverse_exitosos} exitosos")
+
+        stats = self.resultados.get('estadisticas', {})
+        if stats.get('permutaciones_generadas', 0) > 0:
+            print(f"  {'Permutaciones generadas':.<40} {stats['permutaciones_generadas']}")
+            print(f"  {'Permutaciones nuevas':.<40} {stats.get('permutaciones_nuevas', 0)}")
+
+        if stats.get('tiempos_fases'):
+            print(f"\n  {'Tiempos por fase':}")
+            for fase, tiempo in stats['tiempos_fases'].items():
+                print(f"    {fase:.<38} {tiempo:.2f}s")
+
+        if stats.get('tiempo_total'):
+            print(f"\n  {'TIEMPO TOTAL':.<40} {stats['tiempo_total']:.2f}s")
+
+        if stats.get('wildcard_detectado'):
+            print(f"  {'Wildcard DNS':.<40} Detectado y filtrado")
+
+        ips_unicas = set()
+        for sub in self.resultados['subdominios']:
+            ips_unicas.update(sub.get('ips', []))
+        if ips_unicas:
+            print(f"  {'IPs unicas encontradas':.<40} {len(ips_unicas)}")
+
+        print("\n" + "=" * 60)

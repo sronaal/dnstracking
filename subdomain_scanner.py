@@ -1,12 +1,12 @@
 """
 Motor avanzado de escaneo de subdominios
-Soporta threading, deteccion de wildcards, y multiples tipos DNS
+Soporta threading, deteccion de wildcards, CNAME chains, y multiples tipos DNS
 """
 
 import os
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Set, Optional
+from typing import List, Dict, Set, Optional, Tuple
 from threading import Lock
 
 
@@ -22,30 +22,67 @@ class SubdomainScanner:
         self.total_probados = 0
         self.encontrados_count = 0
         self.start_time = None
+        self.wildcard_ips: Set[str] = set()
+        self.wildcard_cnames: Set[str] = set()
 
-    def _probar_subdominio(self, palabra: str, tipos: List[str] = None) -> Optional[Dict]:
-        """Prueba un subdominio con multiples tipos DNS"""
-        if tipos is None:
-            tipos = ['A']
+    def _probar_subdominio(
+        self,
+        palabra: str,
+        tipos_dns: List[str] = None,
+        filtrar_wildcards: bool = True
+    ) -> Optional[Dict]:
+        """Prueba un subdominio con multiples tipos DNS y resuelve CNAME chains"""
+        if tipos_dns is None:
+            tipos_dns = ['A']
 
         subdominio = f"{palabra}.{self.dominio}"
         resultados = {}
+        cname_chain = []
 
-        for tipo in tipos:
+        for tipo in tipos_dns:
             try:
                 valores = self.resolver.resolver_registro(subdominio, tipo)
                 if valores:
-                    resultados[tipo] = valores
+                    if tipo == 'CNAME':
+                        cname_chain = valores
+                        resultados[tipo] = valores
+                    else:
+                        resultados[tipo] = valores
             except Exception:
                 pass
 
-        if resultados:
-            return {
-                'dominio': subdominio,
-                'resultados': resultados,
-                'ips': resultados.get('A', []) + resultados.get('AAAA', [])
-            }
-        return None
+        if not resultados:
+            return None
+
+        if filtrar_wildcards and self._es_wildcard(resultados):
+            return None
+
+        ips = resultados.get('A', []) + resultados.get('AAAA', [])
+
+        return {
+            'dominio': subdominio,
+            'resultados': resultados,
+            'ips': ips,
+            'cname_chain': cname_chain,
+        }
+
+    def _es_wildcard(self, resultados: Dict) -> bool:
+        """Determina si los resultados son producto de wildcard DNS"""
+        if not self.wildcard_ips and not self.wildcard_cnames:
+            return False
+
+        ips_resultado = set(resultados.get('A', []) + resultados.get('AAAA', []))
+        cnames_resultado = set(resultados.get('CNAME', []))
+
+        if ips_resultado and self.wildcard_ips:
+            if ips_resultado & self.wildcard_ips:
+                return True
+
+        if cnames_resultado and self.wildcard_cnames:
+            if cnames_resultado & self.wildcard_cnames:
+                return True
+
+        return False
 
     def _actualizar_progreso(self, actual: int, total: int, encontrados: int):
         """Muestra barra de progreso con estadisticas"""
@@ -57,7 +94,12 @@ class SubdomainScanner:
         rate = actual / elapsed if elapsed > 0 else 0
         eta = (total - actual) / rate if rate > 0 else 0
 
-        eta_str = f"{int(eta // 60)}m {int(eta % 60)}s" if eta < 3600 else f"{eta / 3600:.1f}h"
+        if eta < 60:
+            eta_str = f"{int(eta)}s"
+        elif eta < 3600:
+            eta_str = f"{int(eta // 60)}m {int(eta % 60)}s"
+        else:
+            eta_str = f"{eta / 3600:.1f}h"
 
         import sys
         sys.stdout.write(
@@ -68,6 +110,44 @@ class SubdomainScanner:
             f"ETA: {eta_str}"
         )
         sys.stdout.flush()
+
+    def detectar_wildcard(self) -> Tuple[Set[str], Set[str]]:
+        """
+        Detecta wildcard DNS de forma robusta
+        Retorna (wildcard_ips, wildcard_cnames)
+        """
+        import random
+        import string
+
+        wildcard_ips = set()
+        wildcard_cnames = set()
+
+        test_strings = [
+            ''.join(random.choices(string.ascii_lowercase, k=16)),
+            ''.join(random.choices(string.ascii_lowercase, k=16)),
+            ''.join(random.choices(string.ascii_lowercase, k=16)),
+            f"xn--{''.join(random.choices(string.ascii_lowercase, k=8))}",
+        ]
+
+        for test in test_strings:
+            subdominio = f"{test}.{self.dominio}"
+            try:
+                ips = self.resolver.resolver_registro(subdominio, 'A')
+                if ips:
+                    wildcard_ips.update(ips)
+            except Exception:
+                pass
+
+            try:
+                cnames = self.resolver.resolver_registro(subdominio, 'CNAME')
+                if cnames:
+                    wildcard_cnames.update(cnames)
+            except Exception:
+                pass
+
+        self.wildcard_ips = wildcard_ips
+        self.wildcard_cnames = wildcard_cnames
+        return wildcard_ips, wildcard_cnames
 
     def escanear_con_threading(
         self,
@@ -113,10 +193,14 @@ class SubdomainScanner:
         self.start_time = time.time()
 
         wildcard_ips = set()
+        wildcard_cnames = set()
+
         if detectar_wildcards:
-            wildcard_ips = self._detectar_wildcard()
+            wildcard_ips, wildcard_cnames = self.detectar_wildcard()
             if wildcard_ips:
-                print(f"  [!] Wildcard detectado: {len(wildcard_ips)} IPs filtradas")
+                print(f"  [!] Wildcard IPs detectado: {len(wildcard_ips)} IPs filtradas")
+            if wildcard_cnames:
+                print(f"  [!] Wildcard CNAME detectado: {len(wildcard_cnames)} CNAMEs filtrados")
 
         print(f"  [*] Escaneando {total} subdominios con {threads} hilos...")
         print(f"  [*] Tipos DNS: {', '.join(tipos_dns)}")
@@ -128,7 +212,12 @@ class SubdomainScanner:
 
             with ThreadPoolExecutor(max_workers=threads) as executor:
                 futures = {
-                    executor.submit(self._probar_subdominio, palabra, tipos_dns): palabra
+                    executor.submit(
+                        self._probar_subdominio,
+                        palabra,
+                        tipos_dns,
+                        detectar_wildcards
+                    ): palabra
                     for palabra in batch
                 }
 
@@ -137,10 +226,6 @@ class SubdomainScanner:
                     try:
                         resultado = future.result()
                         if resultado:
-                            ips = set(resultado['ips'])
-                            if wildcard_ips and ips & wildcard_ips:
-                                continue
-
                             with self.lock:
                                 self.encontrados.append(resultado)
                                 self.encontrados_count += 1
@@ -148,6 +233,8 @@ class SubdomainScanner:
                                 for tipo, valores in resultado['resultados'].items():
                                     for valor in valores:
                                         print(f"          \u2514\u2500 [{tipo}] {valor}")
+                                if resultado.get('cname_chain'):
+                                    print(f"          \u2514\u2500 [CHAIN] -> {' -> '.join(resultado['cname_chain'])}")
                     except Exception:
                         pass
 
@@ -171,33 +258,18 @@ class SubdomainScanner:
 
         return self.encontrados
 
-    def _detectar_wildcard(self) -> Set[str]:
-        """Detecta si el dominio tiene wildcard DNS"""
-        import random
-        import string
-
-        wildcard_ips = set()
-        test_strings = [
-            ''.join(random.choices(string.ascii_lowercase, k=12)),
-            ''.join(random.choices(string.ascii_lowercase, k=12)),
-            ''.join(random.choices(string.ascii_lowercase, k=12)),
-        ]
-
-        for test in test_strings:
-            subdominio = f"{test}.{self.dominio}"
-            try:
-                ips = self.resolver.resolver_registro(subdominio, 'A')
-                if ips:
-                    wildcard_ips.update(ips)
-            except Exception:
-                pass
-
-        return wildcard_ips
-
     def generar_permutaciones(self, subdominios: List[Dict]) -> List[str]:
         """Genera permutaciones de subdominios encontrados"""
-        prefijos = ['dev', 'staging', 'test', 'qa', 'uat', 'prod', 'api', 'v2', 'v3', 'new', 'old', 'backup']
-        sufijos = ['-dev', '-staging', '-test', '-api', '-v2', '-backup', '-old']
+        prefijos = [
+            'dev', 'staging', 'test', 'qa', 'uat', 'prod',
+            'api', 'v2', 'v3', 'new', 'old', 'backup',
+            'internal', 'private', 'public', 'demo', 'sandbox',
+            'pre', 'preprod', 'stage', 'acc', 'acceptance',
+        ]
+        sufijos = [
+            '-dev', '-staging', '-test', '-api', '-v2', '-backup',
+            '-old', '-new', '-prod', '-internal', '-demo',
+        ]
 
         palabras_base = []
         for sub in subdominios:

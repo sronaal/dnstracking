@@ -24,14 +24,11 @@ env/
 .DS_Store
 Thumbs.db
 
-# Output files
-output/
-*.json
-*.csv
-*.html
+# Resultados de escaneos (por dominio)
+resultados/
 
 # Logs
 *.log
 
-# Reports
-*_report.*
+# Temp files
+/tmp/dnstraking_*

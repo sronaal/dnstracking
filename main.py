@@ -20,7 +20,7 @@ from reporter import Reporter
 @click.option('--no-axfr', is_flag=True, help='No intentar transferencia de zona')
 @click.option('--no-reverse', is_flag=True, help='No realizar busquedas inversas')
 @click.option('-v', '--verbose', is_flag=True, help='Modo verbose')
-@click.option('-o', '--output', default='txt', type=click.Choice(['txt', 'json', 'csv', 'html', 'all']), help='Formato de salida')
+@click.option('-o', '--output', default='all', type=click.Choice(['txt', 'json', 'csv', 'html', 'all']), help='Formato de salida (default: all)')
 @click.option('--timeout', default=5, type=int, help='Timeout en segundos para consultas DNS')
 @click.option('--max-sub', default=None, type=int, help='Limitar numero de subdominios encontrados')
 @click.option('--delay', default=0.0, type=float, help='Delay en segundos entre lotes de consultas')
@@ -31,18 +31,23 @@ from reporter import Reporter
 @click.option('-p', '--permutations', is_flag=True, help='Generar permutaciones de subdominios encontrados')
 @click.option('--passive', is_flag=True, help='Incluir fuentes pasivas (crt.sh, HackerTarget, etc)')
 @click.option('--passive-only', is_flag=True, help='Solo fuentes pasivas, sin consultas DNS directas')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only):
+@click.option('-d', '--output-dir', default='resultados', help='Directorio base para guardar resultados (default: resultados)')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
+    Los resultados se guardan en resultados/<dominio>/ con timestamp.
+
     Ejemplos:
         python main.py google.com
-        python main.py example.com -w wordlists/subdomains-medium.txt
-        python main.py example.com -w wordlists/subdomains-medium.txt -t 30 -o json
-        python main.py example.com -w wordlists/subdomains-medium.txt -p --tipos-dns A,AAAA,CNAME
-        python main.py example.com --passive
-        python main.py example.com --passive-only
-        python main.py example.com --no-axfr --no-reverse -v
+        python main.py google.com -w wordlists/subdomains-medium.txt
+        python main.py google.com -w wordlists/subdomains-medium.txt -t 30
+        python main.py google.com -w wordlists/subdomains-medium.txt -p --tipos-dns A,AAAA,CNAME
+        python main.py google.com --passive
+        python main.py google.com --passive-only
+        python main.py google.com --no-axfr --no-reverse -v
+        python main.py google.com -o json
+        python main.py google.com -d /ruta/personalizada
     """
 
     tipos_dns_list = [t.strip().upper() for t in tipos_dns.split(',')] if tipos_dns else ['A']
@@ -67,17 +72,22 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             con_pasivo=passive,
         )
 
-        if output in ['json', 'all']:
-            Reporter.guardar_json(resultados, f"{dominio}.json")
-
-        if output in ['csv', 'all'] and resultados.get('subdominios'):
-            Reporter.guardar_csv(resultados['subdominios'], f"{dominio}.csv")
-
-        if output in ['html', 'all']:
-            Reporter.guardar_html(resultados, f"{dominio}.html")
-
         if output == 'all':
-            print(f"\n[OK] Reportes generados en formato JSON, CSV y HTML")
+            Reporter.guardar_todos(resultados, dominio, base_dir=output_dir)
+        else:
+            directorio = Reporter._crear_dir_dominio(dominio, output_dir)
+            timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
+
+            if output == 'json':
+                Reporter.guardar_json(resultados, os.path.join(directorio, f"scan_{timestamp}.json"))
+            elif output == 'txt':
+                Reporter.guardar_txt(resultados, os.path.join(directorio, f"scan_{timestamp}.txt"))
+            elif output == 'html':
+                Reporter.guardar_html(resultados, os.path.join(directorio, f"reporte_{timestamp}.html"))
+            elif output == 'csv':
+                subs = resultados.get('subdominios', []) + resultados.get('subdominios_pasivos', [])
+                if subs:
+                    Reporter.guardar_csv(subs, os.path.join(directorio, f"subdominios_{timestamp}.csv"))
 
     except KeyboardInterrupt:
         print("\n[-] Escaneo cancelado por el usuario")

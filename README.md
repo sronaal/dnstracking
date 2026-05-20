@@ -5,7 +5,7 @@ Escáner DNS de reconocimiento y detección de vulnerabilidades en Python.
 ## Instalación
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+python3 -m venv .venv && source .venv/bin/activate && pip install -r src/requirements.txt
 ```
 
 ## Uso
@@ -46,6 +46,47 @@ python main.py example.com -w wordlists/subdomains-medium.txt -p --passive --vul
 | `-d, --output-dir` | Directorio de resultados |
 | `-v, --verbose` | Modo verbose |
 
+## Estructura
+
+```
+dnstraking/
+├── main.py                    # Entry point CLI
+├── README.md                  # Documentación
+├── .gitignore
+├── src/                       # Código fuente
+│   ├── __init__.py
+│   ├── scanner.py             # Coordinador de escaneo
+│   ├── resolver.py            # Consultas DNS de bajo nivel
+│   ├── subdomain_scanner.py   # Motor de subdominios con threading
+│   ├── sources.py             # Fuentes pasivas (APIs externas)
+│   ├── vulnerabilities.py     # Motor de detección de vulnerabilidades
+│   ├── reporter.py            # Generación de reportes (JSON/TXT/CSV/HTML)
+│   └── requirements.txt       # Dependencias
+├── wordlists/                 # Listas de palabras
+│   ├── subdomains-small.txt   (30 palabras)
+│   ├── subdomains-medium.txt  (180 palabras)
+│   └── subdomains-large.txt   (400+ palabras)
+├── docs/                      # Documentación de referencia
+│   ├── DNS_SCANNER_PLAN.md
+│   ├── EJEMPLOS_CODIGO.py
+│   ├── GUIA_IMPLEMENTACION_PASO_A_PASO.md
+│   ├── INDEX.md
+│   └── RESUMEN_EJECUTIVO.md
+└── resultados/                # Resultados por dominio (gitignored)
+```
+
+## Módulos
+
+| Módulo | Función |
+|--------|---------|
+| `main.py` | CLI con Click, parsea argumentos y orquesta el escaneo |
+| `scanner.py` | Clase DNSScanner, coordina todas las fases del escaneo |
+| `resolver.py` | Clase DNSResolver, consultas DNS de bajo nivel con dnspython |
+| `subdomain_scanner.py` | Threading, wildcard detection, permutaciones avanzadas |
+| `sources.py` | APIs pasivas: crt.sh, HackerTarget, CertSpotter, RapidDNS |
+| `vulnerabilities.py` | 14 checks de seguridad con severidades y CVSS |
+| `reporter.py` | Genera reportes en JSON, TXT, CSV y HTML con dashboard |
+
 ## Vulnerabilidades
 
 | Check | Severidad |
@@ -63,20 +104,13 @@ python main.py example.com -w wordlists/subdomains-medium.txt -p --passive --vul
 | Low TTL | LOW |
 | External MX | INFO |
 
-## Estructura
+## Dependencias
 
-```
-dnstraking/
-├── main.py              # CLI
-├── scanner.py           # Coordinador
-├── resolver.py          # Consultas DNS
-├── subdomain_scanner.py # Threading + wildcards
-├── sources.py           # APIs pasivas
-├── vulnerabilities.py   # Detección de vulnerabilidades
-├── reporter.py          # Reportes JSON/TXT/CSV/HTML
-├── wordlists/           # Wordlists
-└── resultados/          # Resultados por dominio
-```
+- **dnspython** - Consultas DNS
+- **click** - Interfaz CLI
+- **colorama** - Colores en terminal
+- **tabulate** - Tablas formateadas
+- **requests** - APIs externas y verificación HTTP
 
 ## Disclaimer
 

@@ -5,6 +5,7 @@ Analiza la configuracion DNS en busca de problemas de seguridad
 
 import re
 import ipaddress
+import requests
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 
@@ -39,6 +40,109 @@ SEVERITY_ORDER = {'CRITICAL': 0, 'HIGH': 1, 'MEDIUM': 2, 'LOW': 3, 'INFO': 4}
 
 class VulnerabilityScanner:
     """Motor de deteccion de vulnerabilidades DNS"""
+
+    TAKEOVER_FINGERPRINTS = {
+        'AWS S3': {
+            'pattern': r'\.s3(?:-website)?[.-](?:[a-z0-9-]+\.)?amazonaws\.com',
+            'indicators': ['NoSuchBucket', 'The specified bucket does not exist', 'All access to this Amazon S3 will be denied'],
+            'risk': 'Un bucket S3 no reclamado puede ser registrado por un atacante',
+        },
+        'GitHub Pages': {
+            'pattern': r'\.github\.io',
+            'indicators': ['There isn\'t a GitHub Pages site here', '404 Not Found', 'For more information', 'If you\'re using a custom domain'],
+            'risk': 'Una pagina de GitHub no configurada puede ser reclamada',
+        },
+        'Heroku': {
+            'pattern': r'\.herokuapp\.com',
+            'indicators': ['no such app', 'There\'s nothing here', 'Application not found', 'herokucdn.com/error-pages/no-such-app.html'],
+            'risk': 'Una app de Heroku eliminada puede ser registrada por otro usuario',
+        },
+        'Azure': {
+            'pattern': r'\.azurewebsites\.net',
+            'indicators': ['404 Web Site not found', 'The Web App you are attempting to access is not available'],
+            'risk': 'Un Azure Web App eliminado puede ser reclamado',
+        },
+        'Bitbucket': {
+            'pattern': r'\.bitbucket\.io',
+            'indicators': ['Repository not found', 'The page you have requested does not exist'],
+            'risk': 'Un repositorio Bitbucket eliminado puede ser reclamado',
+        },
+        'Shopify': {
+            'pattern': r'\.myshopify\.com',
+            'indicators': ['Sorry, this shop is currently unavailable', 'Only one step left!'],
+            'risk': 'Una tienda Shopify abandonada puede ser reclamada',
+        },
+        'Ghost': {
+            'pattern': r'\.ghost\.io',
+            'indicators': ['The thing you were looking for is no longer here', '404'],
+            'risk': 'Un blog Ghost abandonado puede ser reclamado',
+        },
+        'Zendesk': {
+            'pattern': r'\.zendesk\.com',
+            'indicators': ['Help Center is not available', 'this help center no longer exists'],
+            'risk': 'Un subdominio Zendesk puede ser reclamado',
+        },
+        'Surge.sh': {
+            'pattern': r'\.surge\.sh',
+            'indicators': ['project not found', 'You need to sign up or sign in before continuing'],
+            'risk': 'Un proyecto Surge abandonado puede ser reclamado',
+        },
+        'Netlify': {
+            'pattern': r'\.netlify\.app',
+            'indicators': ['Not Found', 'Page not found', 'The page you are looking for could not be found'],
+            'risk': 'Un sitio Netlify eliminado puede ser reclamado',
+        },
+        'Tumblr': {
+            'pattern': r'\.tumblr\.com',
+            'indicators': ['There\'s nothing here', 'Whatever you were looking for doesn\'t currently exist'],
+            'risk': 'Un blog Tumblr abandonado puede ser reclamado',
+        },
+        'WordPress.com': {
+            'pattern': r'\.wordpress\.com',
+            'indicators': ['Do you want to register', 'This domain is not mapped', 'This blog does not exist'],
+            'risk': 'Un blog WordPress abandonado puede ser reclamado',
+        },
+        'Teamwork': {
+            'pattern': r'\.teamwork\.com',
+            'indicators': ['Oops - We didn\'t find your site', 'This account is no longer available'],
+            'risk': 'Un espacio Teamwork abandonado puede ser reclamado',
+        },
+        'Helpjuice': {
+            'pattern': r'\.helpjuice\.com',
+            'indicators': ['We could not find what you\'re looking for'],
+            'risk': 'Un Help Center Helpjuice abandonado puede ser reclamado',
+        },
+        'Campaign Monitor': {
+            'pattern': r'\.campaignmonitor\.com',
+            'indicators': ['Double check the URL', 'Attempting to access a deactivated account'],
+            'risk': 'Una cuenta Campaign Monitor puede ser reclamada',
+        },
+        'Intercom': {
+            'pattern': r'\.custom\.intercom\.help',
+            'indicators': ['This page is reserved for artistic dogs', 'Uh oh. That page doesn\'t exist'],
+            'risk': 'Una pagina Intercom abandonada puede ser reclamada',
+        },
+        'Webflow': {
+            'pattern': r'\.(webflow\.io|webflow\.com)',
+            'indicators': ['404 - Page not found', 'The page you are looking for doesn\'t exist'],
+            'risk': 'Un sitio Webflow eliminado puede ser reclamado',
+        },
+        'SmugMug': {
+            'pattern': r'\.smugmug\.com',
+            'indicators': ['SmugMug is a paid service'],
+            'risk': 'Un sitio SmugMug abandonado puede ser reclamado',
+        },
+        'Strikingly': {
+            'pattern': r'\.strikinglydns\.com|\.strikingly\.com',
+            'indicators': ['But if you\'re looking to build your own website', 'The site you are looking for no longer exists'],
+            'risk': 'Un sitio Strikingly abandonado puede ser reclamado',
+        },
+        'UptimeRobot': {
+            'pattern': r'\.uptimerobot\.com',
+            'indicators': ['This public status page is no longer available'],
+            'risk': 'Una status page de UptimeRobot puede ser reclamada',
+        },
+    }
 
     def __init__(self, dominio: str, resolver, resultados: Dict, verbose: bool = False):
         self.dominio = dominio.rstrip('.')
@@ -310,6 +414,68 @@ class VulnerabilityScanner:
 
         return None
 
+    def _check_subdomain_takeover(self, subdominio: str, cname_chain: List[str]) -> Optional[Finding]:
+        """Verifica si un subdominio con CNAME es vulnerable a takeover"""
+        for cname in cname_chain:
+            cname_lower = cname.lower()
+            for service, config in self.TAKEOVER_FINGERPRINTS.items():
+                if re.search(config['pattern'], cname_lower):
+                    try:
+                        resp = requests.get(f"http://{subdominio}", timeout=5, allow_redirects=True)
+                        body = resp.text.lower()
+                        status = resp.status_code
+
+                        for indicator in config['indicators']:
+                            if indicator.lower() in body:
+                                return Finding(
+                                    id=self._next_id(),
+                                    nombre=f"Subdomain Takeover - {service}",
+                                    severidad="CRITICAL",
+                                    componente="TAKEOVER",
+                                    descripcion=f"El subdominio {subdominio} apunta a {cname} "
+                                               f"({service}) pero el servicio no esta configurado. "
+                                               f"Un atacante puede registrar este servicio y "
+                                               f"controlar el subdominio.",
+                                    evidencia=f"CNAME: {cname} | HTTP {status} | "
+                                             f"Indicator: '{indicator}'",
+                                    recomendacion=f"Eliminar el registro DNS o configurar el "
+                                                 f"servicio {service} para reclamar {subdominio}.",
+                                    cvss_estimate="8.0",
+                                )
+                    except requests.exceptions.RequestException:
+                        pass
+        return None
+
+    def check_subdomain_takeover(self) -> List[Finding]:
+        """Verifica subdomain takeover en todos los subdominios encontrados"""
+        print(f"\n  [*] Verificando subdomain takeover...")
+        findings = []
+        subdominios = self.resultados.get('subdominios', [])
+
+        vulnerable_count = 0
+        checked_count = 0
+
+        for sub in subdominios:
+            cname_chain = sub.get('cname_chain', [])
+            if not cname_chain:
+                continue
+
+            finding = self._check_subdomain_takeover(sub['dominio'], cname_chain)
+            checked_count += 1
+
+            if finding:
+                self._add_finding(finding)
+                findings.append(finding)
+                vulnerable_count += 1
+
+        if checked_count > 0:
+            print(f"  [+] Takeover check: {checked_count} subdominios con CNAME, "
+                  f"{vulnerable_count} vulnerables")
+        else:
+            print(f"  [+] Takeover check: No se encontraron CNAMEs para verificar")
+
+        return findings
+
     def run_email_security(self):
         """Ejecuta todos los checks de seguridad de email"""
         print(f"\n  [*] Verificando seguridad de email...")
@@ -317,7 +483,7 @@ class VulnerabilityScanner:
         self.check_dmarc()
         self.check_dkim()
 
-    def run_all(self) -> List[Finding]:
+    def run_all(self, check_takeover: bool = True) -> List[Finding]:
         """Ejecuta todas las verificaciones de vulnerabilidades"""
         print(f"\n[+] Analisis de vulnerabilidades DNS para {self.dominio}")
         print("-" * 60)
@@ -325,6 +491,9 @@ class VulnerabilityScanner:
         self.check_axfr()
         self.check_dnssec()
         self.run_email_security()
+
+        if check_takeover:
+            self.check_subdomain_takeover()
 
         self.findings.sort(key=lambda f: SEVERITY_ORDER.get(f.severidad, 99))
 

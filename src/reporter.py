@@ -668,6 +668,55 @@ class Reporter:
             <p>DNSTRACKING - Escaner DNS | Reporte generado automaticamente</p>
         </div>
     </div>
+    <script>
+    document.addEventListener('DOMContentLoaded', function(){{
+        var input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Buscar en tablas...';
+        input.style.cssText = 'width:100%;padding:12px;margin-bottom:20px;border:1px solid #334155;border-radius:8px;background:#1e293b;color:#e2e8f0;font-size:1rem;';
+        var container = document.querySelector('.container');
+        container.insertBefore(input, container.querySelector('.header').nextSibling);
+
+        input.addEventListener('keyup', function(){{
+            var q = this.value.toLowerCase();
+            document.querySelectorAll('table').forEach(function(table){{
+                table.querySelectorAll('tr').forEach(function(row, i){{
+                    if (i === 0) return;
+                    var text = row.textContent.toLowerCase();
+                    row.style.display = text.includes(q) ? '' : 'none';
+                }});
+            }});
+        }});
+
+        document.querySelectorAll('th').forEach(function(th){{
+            th.style.cursor = 'pointer';
+            th.addEventListener('click', function(){{
+                var table = th.closest('table');
+                var tbody = Array.from(table.querySelectorAll('tr')).slice(1);
+                var idx = Array.from(th.parentNode.children).indexOf(th);
+                var asc = th.dataset.sort !== 'asc';
+                th.dataset.sort = asc ? 'asc' : 'desc';
+                tbody.sort(function(a,b){{
+                    var va = a.children[idx]?.textContent || '';
+                    var vb = b.children[idx]?.textContent || '';
+                    return asc ? va.localeCompare(vb) : vb.localeCompare(va);
+                }});
+                tbody.forEach(function(row){{ table.appendChild(row); }});
+            }});
+        }});
+
+        document.querySelectorAll('h2').forEach(function(h2){{
+            h2.style.cursor = 'pointer';
+            h2.addEventListener('click', function(){{
+                var next = h2.nextElementSibling;
+                while (next && next.tagName !== 'H2') {{
+                    next.style.display = next.style.display === 'none' ? '' : 'none';
+                    next = next.nextElementSibling;
+                }}
+            }});
+        }});
+    }});
+    </script>
 </body>
 </html>"""
 

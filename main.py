@@ -6,6 +6,7 @@ Herramienta para auditoria y analisis de infraestructura DNS
 
 import sys
 import os
+import json
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
@@ -43,7 +44,8 @@ from reporter import Reporter
 @click.option('--geo', is_flag=True, help='Geolocalizar IPs encontradas')
 @click.option('--doh', is_flag=True, help='Usar DNS-over-HTTPS (Cloudflare)')
 @click.option('--ports', is_flag=True, help='Escanear puertos comunes en IPs')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo, doh, ports):
+@click.option('--diff', default=None, help='Comparar con resultado JSON anterior (ruta)')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo, doh, ports, diff):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -99,6 +101,9 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             con_puertos=ports,
         )
 
+        if diff:
+            _mostrar_diff(resultados, diff)
+
         if output == 'all':
             Reporter.guardar_todos(resultados, dominio, base_dir=output_dir)
         else:
@@ -129,6 +134,53 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             import traceback
             traceback.print_exc()
         sys.exit(1)
+
+
+def _mostrar_diff(actuales: Dict, ruta_anterior: str):
+    from color_util import verde, rojo, icono_info
+    try:
+        with open(ruta_anterior) as f:
+            anteriores = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError) as e:
+        print(f" {icono_error()} Error al cargar archivo diff: {e}")
+        return
+
+    subs_prev = set()
+    for sub in anteriores.get('subdominios', []):
+        subs_prev.add(sub['dominio'])
+    for sub in anteriores.get('subdominios_pasivos', []):
+        subs_prev.add(sub['dominio'])
+
+    subs_act = set()
+    for sub in actuales.get('subdominios', []):
+        subs_act.add(sub['dominio'])
+    for sub in actuales.get('subdominios_pasivos', []):
+        subs_act.add(sub['dominio'])
+
+    nuevos = subs_act - subs_prev
+    desaparecidos = subs_prev - subs_act
+
+    print(f"\n{'='*60}")
+    print(f"  DIFF vs escaneo anterior")
+    print(f"{'='*60}")
+
+    if nuevos:
+        print(f"\n {verde('NUEVOS:')} {len(nuevos)}")
+        for sub in sorted(nuevos)[:20]:
+            print(f"    + {sub}")
+        if len(nuevos) > 20:
+            print(f"    ... y {len(nuevos) - 20} mas")
+
+    if desaparecidos:
+        print(f"\n {rojo('DESAPARECIDOS:')} {len(desaparecidos)}")
+        for sub in sorted(desaparecidos)[:20]:
+            print(f"    - {sub}")
+        if len(desaparecidos) > 20:
+            print(f"    ... y {len(desaparecidos) - 20} mas")
+
+    if not nuevos and not desaparecidos:
+        print(f"\n {icono_info()} Sin cambios respecto al escaneo anterior")
+    print()
 
 
 if __name__ == '__main__':

@@ -50,6 +50,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `--geo` | IP geolocation & ASN lookup |
 | `--doh` | DNS-over-HTTPS (Cloudflare) |
 | `--ports` | Port scan common ports on discovered IPs |
+| `--diff` | Compare against previous JSON scan results |
 
 ## Passive sources
 

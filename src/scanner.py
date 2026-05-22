@@ -256,7 +256,7 @@ class DNSScanner:
         self.tiempos_fases['vulnerabilidades'] = time.time() - inicio
         return findings
 
-    def consulta_whois(self):
+    def consulta_whois(self) -> Dict:
         inicio = time.time()
         print(f"\n[+] Consulta WHOIS para {self.dominio}")
         print("-" * 60)
@@ -287,7 +287,7 @@ class DNSScanner:
         self.tiempos_fases['whois'] = time.time() - inicio
         return resultado
 
-    def inspeccionar_certificados(self):
+    def inspeccionar_certificados(self) -> List:
         inicio = time.time()
         subdominios = (
             self.resultados.get('subdominios', []) +
@@ -339,7 +339,7 @@ class DNSScanner:
         self.tiempos_fases['certificados'] = time.time() - inicio
         return certificados
 
-    def _extraer_sans(self, certificados: List) -> List[str]:
+    def _extraer_sans(self, certificados: List[Dict]) -> List[str]:
         existentes = set()
         for sub in self.resultados.get('subdominios', []):
             existentes.add(sub['dominio'])
@@ -356,7 +356,7 @@ class DNSScanner:
                     existentes.add(san)
         return nuevos
 
-    def localizar_ips(self):
+    def localizar_ips(self) -> List:
         inicio = time.time()
         ips = set()
         for sub in self.resultados.get('subdominios', []):
@@ -388,7 +388,7 @@ class DNSScanner:
         self.tiempos_fases['geo'] = time.time() - inicio
         return resultados
 
-    def escanear_puertos(self):
+    def escanear_puertos(self) -> Dict:
         inicio = time.time()
         ips = set()
         for sub in self.resultados.get('subdominios', []):

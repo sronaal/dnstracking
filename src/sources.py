@@ -132,6 +132,47 @@ class PassiveSources:
 
         return self.subdominios
 
+    def alienvault(self) -> Dict[str, Dict]:
+        print(f" {icono_info()} Consultando AlienVault OTX...")
+        url = f"https://otx.alienvault.com/api/v1/indicators/domain/{self.dominio}/passive_dns"
+
+        try:
+            resp = requests.get(url, timeout=self.timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                for entry in data.get('passive_dns', []):
+                    sub = entry.get('hostname', '').lower()
+                    ip = entry.get('address', '')
+                    if sub and sub.endswith(self.dominio) and sub != self.dominio:
+                        self._agregar_subdominio(sub, 'alienvault', ip)
+
+                count = len([s for s in self.subdominios.values() if 'alienvault' in s['fuentes']])
+                print(f" {icono_exito()} AlienVault: {count} subdominios encontrados")
+        except (requests.exceptions.RequestException, ValueError) as e:
+            print(f" {icono_error()} AlienVault error: {e}")
+
+        return self.subdominios
+
+    def threatcrowd(self) -> Dict[str, Dict]:
+        print(f" {icono_info()} Consultando ThreatCrowd...")
+        url = f"https://www.threatcrowd.org/searchApi/v2/domain/report/?domain={self.dominio}"
+
+        try:
+            resp = requests.get(url, timeout=self.timeout)
+            if resp.status_code == 200:
+                data = resp.json()
+                for sub in data.get('subdomains', []):
+                    sub = sub.lower().strip()
+                    if sub.endswith(self.dominio) and sub != self.dominio:
+                        self._agregar_subdominio(sub, 'threatcrowd')
+
+                count = len([s for s in self.subdominios.values() if 'threatcrowd' in s['fuentes']])
+                print(f" {icono_exito()} ThreatCrowd: {count} subdominios encontrados")
+        except (requests.exceptions.RequestException, ValueError) as e:
+            print(f" {icono_error()} ThreatCrowd error: {e}")
+
+        return self.subdominios
+
     def enumerar_todas(self) -> List[Dict]:
         """
         Ejecuta todas las fuentes pasivas
@@ -144,6 +185,8 @@ class PassiveSources:
         self.hackertarget()
         self.certspotter()
         self.rapiddns()
+        self.alienvault()
+        self.threatcrowd()
 
         resultados = []
         for sub, data in self.subdominios.items():

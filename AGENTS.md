@@ -53,7 +53,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 
 ## Passive sources
 
-Uses **no API keys**. Sources: crt.sh, HackerTarget, CertSpotter, RapidDNS. All called via `requests.get` with generous timeouts.
+Uses **no API keys**. Sources: crt.sh, HackerTarget, CertSpotter, RapidDNS, AlienVault OTX, ThreatCrowd. All called via `requests.get` with generous timeouts.
 
 ## WHOIS
 

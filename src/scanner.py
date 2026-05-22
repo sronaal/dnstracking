@@ -9,6 +9,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Optional
 from resolver import DNSResolver
+from doh_resolver import DohResolver
 from subdomain_scanner import SubdomainScanner
 from sources import PassiveSources
 from vulnerabilities import VulnerabilityScanner
@@ -25,10 +26,11 @@ import dns.exception
 class DNSScanner:
     """Escaner DNS principal"""
 
-    def __init__(self, dominio: str, verbose: bool = False, timeout: int = 5):
+    def __init__(self, dominio: str, verbose: bool = False, timeout: int = 5,
+                 resolver=None):
         self.dominio = dominio.rstrip('.')
         self.verbose = verbose
-        self.resolver = DNSResolver(timeout=timeout)
+        self.resolver = resolver if resolver else DNSResolver(timeout=timeout)
         self.subdomain_scanner = SubdomainScanner(self.resolver, self.dominio, verbose=verbose)
         self.resultados = {
             'dominio': self.dominio,
@@ -405,6 +407,7 @@ class DNSScanner:
         con_whois: bool = False,
         con_ssl: bool = False,
         con_geo: bool = False,
+        con_doh: bool = False,
     ) -> Dict:
         tiempo_total_inicio = time.time()
 

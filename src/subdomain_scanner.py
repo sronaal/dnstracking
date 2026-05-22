@@ -5,6 +5,7 @@ Soporta threading, deteccion de wildcards, CNAME chains, y multiples tipos DNS
 
 import os
 import time
+import dns.exception
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Set, Optional, Tuple
 from threading import Lock
@@ -49,7 +50,7 @@ class SubdomainScanner:
                         resultados[tipo] = valores
                     else:
                         resultados[tipo] = valores
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         if not resultados:
@@ -136,14 +137,14 @@ class SubdomainScanner:
                 ips = self.resolver.resolver_registro(subdominio, 'A')
                 if ips:
                     wildcard_ips.update(ips)
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
             try:
                 cnames = self.resolver.resolver_registro(subdominio, 'CNAME')
                 if cnames:
                     wildcard_cnames.update(cnames)
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         self.wildcard_ips = wildcard_ips
@@ -224,7 +225,7 @@ class SubdomainScanner:
                                         print(f"          \u2514\u2500 [{tipo}] {valor}")
                                 if resultado.get('cname_chain'):
                                     print(f"          \u2514\u2500 [CHAIN] -> {' -> '.join(resultado['cname_chain'])}")
-                    except Exception:
+                    except (dns.exception.DNSException, OSError, TimeoutError):
                         pass
 
                     with self.lock:

@@ -48,6 +48,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `--whois` | WHOIS / RDAP domain registration lookup |
 | `--ssl` | SSL/TLS certificate inspection of subdomains |
 | `--geo` | IP geolocation & ASN lookup |
+| `--doh` | DNS-over-HTTPS (Cloudflare) |
 
 ## Passive sources
 
@@ -60,3 +61,7 @@ Uses system `whois` command first, falls back to RDAP API (no key needed). Suppo
 ## SSL certificates
 
 Certificate inspection uses Python's built-in `ssl` and `socket` modules (no extra deps). Checks each subdomain on port 443, extracts issuer, validity, SANs, days remaining.
+
+## DNS-over-HTTPS
+
+Uses Cloudflare JSON API (no extra deps). Replaces system DNS resolver entirely when `--doh` is set.

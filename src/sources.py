@@ -47,7 +47,7 @@ class PassiveSources:
 
                 count = len([s for s in self.subdominios.values() if 'crt.sh' in s['fuentes']])
                 print(f" {icono_exito()} crt.sh: {count} subdominios encontrados")
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             print(f" {icono_error()} crt.sh error: {e}")
 
         return self.subdominios
@@ -74,7 +74,7 @@ class PassiveSources:
 
                 count = len([s for s in self.subdominios.values() if 'hackertarget' in s['fuentes']])
                 print(f" {icono_exito()} HackerTarget: {count} subdominios encontrados")
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             print(f" {icono_error()} HackerTarget error: {e}")
 
         return self.subdominios
@@ -101,7 +101,7 @@ class PassiveSources:
 
                 count = len([s for s in self.subdominios.values() if 'rapiddns' in s['fuentes']])
                 print(f" {icono_exito()} RapidDNS: {count} subdominios encontrados")
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
             print(f" {icono_error()} RapidDNS error: {e}")
 
         return self.subdominios
@@ -127,7 +127,7 @@ class PassiveSources:
 
                 count = len([s for s in self.subdominios.values() if 'certspotter' in s['fuentes']])
                 print(f" {icono_exito()} CertSpotter: {count} subdominios encontrados")
-        except Exception as e:
+        except (requests.exceptions.RequestException, ValueError) as e:
             print(f" {icono_error()} CertSpotter error: {e}")
 
         return self.subdominios

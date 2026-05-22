@@ -12,6 +12,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src
 import click
 from colorama import init as colorama_init
 from scanner import DNSScanner
+from doh_resolver import DohResolver
 from reporter import Reporter
 
 
@@ -40,7 +41,8 @@ from reporter import Reporter
 @click.option('--whois', is_flag=True, help='Consultar WHOIS del dominio')
 @click.option('--ssl', is_flag=True, help='Inspeccionar certificados SSL/TLS')
 @click.option('--geo', is_flag=True, help='Geolocalizar IPs encontradas')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo):
+@click.option('--doh', is_flag=True, help='Usar DNS-over-HTTPS (Cloudflare)')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo, doh):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -65,7 +67,11 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
     tipos_dns_list = [t.strip().upper() for t in tipos_dns.split(',')] if tipos_dns else ['A']
 
     try:
-        scanner = DNSScanner(dominio, verbose=verbose, timeout=timeout)
+        dns_resolver = None
+        if doh:
+            print("[*] Usando DNS-over-HTTPS (Cloudflare)")
+            dns_resolver = DohResolver(proveedor='cloudflare', timeout=timeout)
+        scanner = DNSScanner(dominio, verbose=verbose, timeout=timeout, resolver=dns_resolver)
 
         if dns_server:
             scanner.resolver.resolver.nameservers = [dns_server]

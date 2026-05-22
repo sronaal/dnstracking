@@ -7,6 +7,7 @@ import re
 import ipaddress
 import requests
 import dns.resolver
+import dns.exception
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 from color_util import severidad_color
@@ -525,7 +526,7 @@ class VulnerabilityScanner:
                                 })
                         except (ValueError, IndexError):
                             pass
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         for item in low_ttl_domains:
@@ -586,7 +587,7 @@ class VulnerabilityScanner:
                                 self._add_finding(finding)
                     except ValueError:
                         pass
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         return findings
@@ -644,9 +645,9 @@ class VulnerabilityScanner:
                         test_resolver.lifetime = 3
 
                         test_resolver.resolve('google.com', 'A')
-                    except Exception:
+                    except (dns.exception.DNSException, OSError, TimeoutError):
                         pass
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         return findings
@@ -694,9 +695,9 @@ class VulnerabilityScanner:
                                 )
                                 findings.append(finding)
                                 self._add_finding(finding)
-                    except Exception:
+                    except (dns.exception.DNSException, OSError, TimeoutError):
                         pass
-            except Exception:
+            except (dns.exception.DNSException, OSError):
                 pass
 
         return findings if findings else None

@@ -31,7 +31,7 @@ class DNSResolver:
             return []
         except dns.exception.Timeout:
             return []
-        except Exception:
+        except (dns.exception.DNSException, OSError):
             return []
 
     def es_dominio_valido(self, dominio: str) -> bool:
@@ -40,16 +40,13 @@ class DNSResolver:
             return True
         except (dns.resolver.NXDOMAIN, dns.resolver.NoAnswer, dns.exception.Timeout):
             return False
-        except Exception:
+        except (dns.exception.DNSException, OSError):
             return False
 
     def enumerar_basicos(self, dominio: str) -> Dict[str, List[str]]:
         resultados = {}
         for tipo in self.BASIC_RECORDS:
-            try:
-                resultados[tipo] = self.resolver_registro(dominio, tipo)
-            except Exception:
-                resultados[tipo] = []
+            resultados[tipo] = self.resolver_registro(dominio, tipo)
         return resultados
 
     def busqueda_inversa(self, ip: str) -> Optional[str]:
@@ -58,7 +55,7 @@ class DNSResolver:
             respuesta = self.resolver.resolve(addr_inversa, 'PTR')
             for rdata in respuesta:
                 return str(rdata).rstrip('.')
-        except Exception:
+        except (dns.exception.DNSException, OSError, ValueError):
             pass
         return None
 

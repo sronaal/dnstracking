@@ -10,6 +10,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
 import click
+from colorama import init as colorama_init
 from scanner import DNSScanner
 from reporter import Reporter
 
@@ -37,7 +38,8 @@ from reporter import Reporter
 @click.option('--no-takeover', is_flag=True, help='Saltar check de subdomain takeover')
 @click.option('--no-infra', is_flag=True, help='Saltar checks de infraestructura')
 @click.option('--whois', is_flag=True, help='Consultar WHOIS del dominio')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois):
+@click.option('--ssl', is_flag=True, help='Inspeccionar certificados SSL/TLS')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -58,6 +60,7 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
         python main.py google.com --vulns --no-takeover
     """
 
+    colorama_init()
     tipos_dns_list = [t.strip().upper() for t in tipos_dns.split(',')] if tipos_dns else ['A']
 
     try:
@@ -83,6 +86,7 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             check_takeover=not no_takeover,
             check_infrastructure=not no_infra,
             con_whois=whois,
+            con_ssl=ssl,
         )
 
         if output == 'all':

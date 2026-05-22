@@ -46,6 +46,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `--dns-server` | custom DNS server |
 | `--tipos-dns` | record types to query (default: A) |
 | `--whois` | WHOIS / RDAP domain registration lookup |
+| `--ssl` | SSL/TLS certificate inspection of subdomains |
 
 ## Passive sources
 
@@ -54,3 +55,7 @@ Uses **no API keys**. Sources: crt.sh, HackerTarget, CertSpotter, RapidDNS. All 
 ## WHOIS
 
 Uses system `whois` command first, falls back to RDAP API (no key needed). Supports TLDs: com, net, org, info, io, co.
+
+## SSL certificates
+
+Certificate inspection uses Python's built-in `ssl` and `socket` modules (no extra deps). Checks each subdomain on port 443, extracts issuer, validity, SANs, days remaining.

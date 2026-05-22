@@ -8,6 +8,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Dict, Set, Optional, Tuple
 from threading import Lock
+from color_util import icono_encontrado
 
 
 class SubdomainScanner:
@@ -217,7 +218,7 @@ class SubdomainScanner:
                             with self.lock:
                                 self.encontrados.append(resultado)
                                 self.encontrados_count += 1
-                                print(f"  [FOUND] {resultado['dominio']}")
+                                print(f"  {icono_encontrado()} {resultado['dominio']}")
                                 for tipo, valores in resultado['resultados'].items():
                                     for valor in valores:
                                         print(f"          \u2514\u2500 [{tipo}] {valor}")

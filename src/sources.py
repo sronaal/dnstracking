@@ -6,6 +6,7 @@ APIs externas sin necesidad de enviar consultas DNS directas
 import requests
 from typing import List, Dict, Set
 from urllib.parse import quote
+from color_util import icono_exito, icono_error, icono_info
 
 
 class PassiveSources:
@@ -29,7 +30,7 @@ class PassiveSources:
         Obtiene subdominios de certificados SSL via crt.sh
         No requiere API key
         """
-        print(f"  [*] Consultando crt.sh...")
+        print(f" {icono_info()} Consultando crt.sh...")
         url = f"https://crt.sh/?q={quote(self.dominio)}&output=json"
         headers = {'User-Agent': 'DNSTRACKING/1.0'}
 
@@ -45,9 +46,9 @@ class PassiveSources:
                             self._agregar_subdominio(sub, 'crt.sh')
 
                 count = len([s for s in self.subdominios.values() if 'crt.sh' in s['fuentes']])
-                print(f"  [+] crt.sh: {count} subdominios encontrados")
+                print(f" {icono_exito()} crt.sh: {count} subdominios encontrados")
         except Exception as e:
-            print(f"  [-] crt.sh error: {e}")
+            print(f" {icono_error()} crt.sh error: {e}")
 
         return self.subdominios
 
@@ -56,7 +57,7 @@ class PassiveSources:
         Obtiene subdominios via HackerTarget API
         Gratuito, sin API key
         """
-        print(f"  [*] Consultando HackerTarget...")
+        print(f" {icono_info()} Consultando HackerTarget...")
         url = f"https://api.hackertarget.com/hostsearch/?q={quote(self.dominio)}"
 
         try:
@@ -72,9 +73,9 @@ class PassiveSources:
                             self._agregar_subdominio(subdominio, 'hackertarget', ip)
 
                 count = len([s for s in self.subdominios.values() if 'hackertarget' in s['fuentes']])
-                print(f"  [+] HackerTarget: {count} subdominios encontrados")
+                print(f" {icono_exito()} HackerTarget: {count} subdominios encontrados")
         except Exception as e:
-            print(f"  [-] HackerTarget error: {e}")
+            print(f" {icono_error()} HackerTarget error: {e}")
 
         return self.subdominios
 
@@ -83,7 +84,7 @@ class PassiveSources:
         Obtiene subdominios via RapidDNS
         Gratuito, sin API key
         """
-        print(f"  [*] Consultando RapidDNS...")
+        print(f" {icono_info()} Consultando RapidDNS...")
         url = f"https://rapiddns.io/subdomain/{self.dominio}?full=1"
         headers = {'User-Agent': 'Mozilla/5.0'}
 
@@ -99,9 +100,9 @@ class PassiveSources:
                         self._agregar_subdominio(sub, 'rapiddns')
 
                 count = len([s for s in self.subdominios.values() if 'rapiddns' in s['fuentes']])
-                print(f"  [+] RapidDNS: {count} subdominios encontrados")
+                print(f" {icono_exito()} RapidDNS: {count} subdominios encontrados")
         except Exception as e:
-            print(f"  [-] RapidDNS error: {e}")
+            print(f" {icono_error()} RapidDNS error: {e}")
 
         return self.subdominios
 
@@ -110,7 +111,7 @@ class PassiveSources:
         Obtiene subdominios de certificados SSL via CertSpotter API
         Gratuito, sin API key
         """
-        print(f"  [*] Consultando CertSpotter...")
+        print(f" {icono_info()} Consultando CertSpotter...")
         url = f"https://api.certspotter.com/v1/issuances?domain={quote(self.dominio)}&include_subdomains=true&expand=dns_names"
 
         try:
@@ -125,9 +126,9 @@ class PassiveSources:
                             self._agregar_subdominio(name, 'certspotter')
 
                 count = len([s for s in self.subdominios.values() if 'certspotter' in s['fuentes']])
-                print(f"  [+] CertSpotter: {count} subdominios encontrados")
+                print(f" {icono_exito()} CertSpotter: {count} subdominios encontrados")
         except Exception as e:
-            print(f"  [-] CertSpotter error: {e}")
+            print(f" {icono_error()} CertSpotter error: {e}")
 
         return self.subdominios
 
@@ -152,5 +153,5 @@ class PassiveSources:
                 'fuentes': list(data['fuentes']),
             })
 
-        print(f"\n  [+] Total subdominios unicos: {len(resultados)}")
+        print(f"\n {icono_exito()} Total subdominios unicos: {len(resultados)}")
         return resultados

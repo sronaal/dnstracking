@@ -13,6 +13,8 @@ from subdomain_scanner import SubdomainScanner
 from sources import PassiveSources
 from vulnerabilities import VulnerabilityScanner
 from whois_lookup import WhoisLookup
+from certificate import CertificateInspector
+from color_util import icono_ok, icono_error, icono_exito, icono_info, cian, negrita, verde, amarillo, rojo
 
 import dns.zone
 import dns.query
@@ -281,6 +283,75 @@ class DNSScanner:
         self.tiempos_fases['whois'] = time.time() - inicio
         return resultado
 
+    def inspeccionar_certificados(self):
+        inicio = time.time()
+        subdominios = (
+            self.resultados.get('subdominios', []) +
+            self.resultados.get('subdominios_pasivos', [])
+        )
+        if not subdominios:
+            print(f"\n {icono_info()} Sin subdominios para inspeccionar SSL")
+            return []
+
+        print(f"\n[+] Inspeccionando certificados SSL/TLS ({len(subdominios)} hosts)")
+        print("-" * 60)
+
+        inspector = CertificateInspector(timeout=5)
+        certificados = inspector.inspeccionar_subdominios(subdominios)
+        self.resultados['certificados'] = certificados
+
+        if certificados:
+            vencidos = [c for c in certificados if c.get('expirado')]
+            proximos = [c for c in certificados if not c.get('expirado')
+                        and c.get('dias_restantes', 999) < 30]
+
+            print(f"\n  {icono_exito()} Certificados obtenidos: {len(certificados)}")
+            for cert in certificados[:10]:
+                host = cert['hostname']
+                dias = cert.get('dias_restantes')
+                if cert.get('expirado'):
+                    estado = rojo(f"VENCIDO ({abs(dias)} dias)")
+                elif dias is not None and dias < 7:
+                    estado = rojo(f"{dias} dias")
+                elif dias is not None and dias < 30:
+                    estado = amarillo(f"{dias} dias")
+                else:
+                    estado = verde(f"{dias} dias")
+
+                emisor = cert.get('emisor', {}).get('organizationName', '?')
+                print(f"    {host:<40} {estado:<15} {emisor[:30]}")
+
+            if vencidos:
+                print(f"\n  {rojo('Certificados VENCIDOS:')} {len(vencidos)}")
+            if len(certificados) > 10:
+                print(f"  ... y {len(certificados) - 10} mas")
+
+            sans_extra = self._extraer_sans(certificados)
+            if sans_extra:
+                print(f"\n  {icono_info()} {len(sans_extra)} subdominios adicionales via SANs")
+        else:
+            print(f"\n  {icono_error()} No se pudieron obtener certificados")
+
+        self.tiempos_fases['certificados'] = time.time() - inicio
+        return certificados
+
+    def _extraer_sans(self, certificados: List) -> List[str]:
+        existentes = set()
+        for sub in self.resultados.get('subdominios', []):
+            existentes.add(sub['dominio'])
+        for sub in self.resultados.get('subdominios_pasivos', []):
+            existentes.add(sub['dominio'])
+
+        nuevos = []
+        for cert in certificados:
+            for san in cert.get('sans', []):
+                if san.startswith('*.') or san.startswith('*.'):
+                    continue
+                if san not in existentes:
+                    nuevos.append(san)
+                    existentes.add(san)
+        return nuevos
+
     def escanear_completo(
         self,
         wordlist: str = None,
@@ -299,13 +370,14 @@ class DNSScanner:
         check_takeover: bool = True,
         check_infrastructure: bool = True,
         con_whois: bool = False,
+        con_ssl: bool = False,
     ) -> Dict:
         tiempo_total_inicio = time.time()
 
         print("\n" + "=" * 60)
-        print(f"  DNSTRACKING - Escaner DNS")
-        print(f"  Dominio: {self.dominio}")
-        print(f"  Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        print(f"  {cian(negrita('DNSTRACKING'))} - {cian('Escáner DNS')}")
+        print(f"  {negrita('Dominio:')} {self.dominio}")
+        print(f"  {negrita('Fecha:')} {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
         print("=" * 60)
 
         if solo_vulnerabilidades:
@@ -320,7 +392,7 @@ class DNSScanner:
             )
             self.resultados['estadisticas']['tiempo_total'] = time.time() - tiempo_total_inicio
             print("\n" + "=" * 60)
-            print("  ESCANEO COMPLETADO")
+            print(f"  {verde(negrita('ESCANEO COMPLETADO'))}")
             print("=" * 60)
             self._mostrar_resumen()
             return self.resultados
@@ -332,16 +404,16 @@ class DNSScanner:
                 self.consulta_whois()
             self.resultados['estadisticas']['tiempo_total'] = time.time() - tiempo_total_inicio
             print("\n" + "=" * 60)
-            print("  ESCANEO COMPLETADO")
+            print(f"  {verde(negrita('ESCANEO COMPLETADO'))}")
             print("=" * 60)
             self._mostrar_resumen()
             return self.resultados
 
         print("\n[*] Validando dominio...")
         if not self.resolver.es_dominio_valido(self.dominio):
-            print(f"[-] Dominio invalido o no resoluble: {self.dominio}")
+            print(f" {icono_error()} Dominio invalido o no resoluble: {self.dominio}")
             return self.resultados
-        print("[OK] Dominio valido\n")
+        print(f" {icono_ok()} Dominio valido\n")
 
         fases_activas = 1  # registros basicos
         if con_whois:
@@ -355,6 +427,8 @@ class DNSScanner:
         if reverse_lookup:
             fases_activas += 1
         if con_vulnerabilidades:
+            fases_activas += 1
+        if con_ssl and (wordlist or con_pasivo):
             fases_activas += 1
 
         fase = 1
@@ -433,8 +507,15 @@ class DNSScanner:
                 print("\n[-] Analisis de vulnerabilidades cancelado")
             except Exception as e:
                 print(f"[-] Error en analisis de vulnerabilidades: {e}")
-        else:
-            print("\n[FASE 5/5] Analisis de vulnerabilidades - OMITIDA")
+            fase += 1
+
+        if con_ssl and (self.resultados.get('subdominios') or self.resultados.get('subdominios_pasivos')):
+            print(f"\n[FASE {fase}/{fases_activas}] Inspeccion de certificados SSL/TLS")
+            try:
+                self.inspeccionar_certificados()
+            except Exception as e:
+                print(f"  {icono_error()} Error en SSL: {e}")
+            fase += 1
 
         tiempo_total = time.time() - tiempo_total_inicio
         self.resultados['estadisticas']['tiempo_total'] = tiempo_total
@@ -443,7 +524,7 @@ class DNSScanner:
         self.resultados['estadisticas']['wildcard_detectado'] = bool(self.subdomain_scanner.wildcard_ips)
 
         print("\n" + "=" * 60)
-        print("  ESCANEO COMPLETADO")
+        print(f"  {verde(negrita('ESCANEO COMPLETADO'))}")
         print("=" * 60)
 
         self._mostrar_resumen()

@@ -9,6 +9,7 @@ import requests
 import dns.resolver
 from typing import List, Dict, Optional
 from dataclasses import dataclass, field
+from color_util import severidad_color
 
 
 @dataclass
@@ -159,14 +160,8 @@ class VulnerabilityScanner:
 
     def _add_finding(self, finding: Finding):
         self.findings.append(finding)
-        severity_icon = {
-            'CRITICAL': '[!!!]',
-            'HIGH': '[!!]',
-            'MEDIUM': '[!]',
-            'LOW': '[~]',
-            'INFO': '[i]',
-        }.get(finding.severidad, '[?]')
-        print(f"  {severity_icon} [{finding.severidad}] {finding.nombre}")
+        icon = severidad_color(finding.severidad)
+        print(f"  {icon} {finding.nombre}")
         if self.verbose:
             print(f"      {finding.descripcion}")
 

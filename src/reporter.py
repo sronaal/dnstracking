@@ -53,6 +53,7 @@ class Reporter:
             vulns = resultados.get('vulnerabilidades', [])
             vuln_summary = resultados.get('resumen_vulnerabilidades', {})
             whois = resultados.get('whois', {})
+            certificados = resultados.get('certificados', [])
 
             lineas = []
             lineas.append("=" * 70)
@@ -131,6 +132,20 @@ class Reporter:
                     lineas.append(f"  NS:        {', '.join(whois['name_servers'][:5])}")
                 if whois.get('estado'):
                     lineas.append(f"  Estado:    {whois['estado']}")
+                lineas.append("")
+
+            if certificados:
+                lineas.append("-" * 70)
+                lineas.append(f"  CERTIFICADOS SSL/TLS ({len(certificados)})")
+                lineas.append("-" * 70)
+                lineas.append("")
+                lineas.append(f"  {'Host':<40} {'Dias':<10} {'Emisor'}")
+                lineas.append(f"  {'-'*40} {'-'*10} {'-'*30}")
+                for cert in certificados:
+                    dias = cert.get('dias_restantes', '?')
+                    estado = 'VENCIDO' if cert.get('expirado') else f'{dias}'
+                    emisor = cert.get('emisor', {}).get('organizationName', '?')
+                    lineas.append(f"  {cert['hostname']:<40} {estado:<10} {emisor[:30]}")
                 lineas.append("")
 
             if vulns:
@@ -232,6 +247,7 @@ class Reporter:
         vulns = resultados.get('vulnerabilidades', [])
         vuln_summary = resultados.get('resumen_vulnerabilidades', {})
         whois = resultados.get('whois', {})
+        certificados = resultados.get('certificados', [])
 
         registros_html = ""
         for tipo, valores in basicos.items():
@@ -507,8 +523,41 @@ class Reporter:
         </div>
 """
 
+        cert_html = ""
+        if certificados:
+            cert_html = """
+        <h2>Certificados SSL/TLS</h2>
+        <div class="card">
+            <table>
+                <tr><th>Host</th><th>Dias</th><th>Emisor</th><th>SANs</th></tr>
+"""
+            for cert in certificados[:50]:
+                dias = cert.get('dias_restantes', '?')
+                if cert.get('expirado'):
+                    badge = '<span class="badge badge-danger">VENCIDO</span>'
+                elif dias is not None and dias < 7:
+                    badge = f'<span class="badge badge-danger">{dias}</span>'
+                elif dias is not None and dias < 30:
+                    badge = f'<span class="badge badge-high">{dias}</span>'
+                else:
+                    badge = f'<span class="badge badge-low">{dias}</span>'
+                emisor = cert.get('emisor', {}).get('organizationName', '')
+                sans = ', '.join(cert.get('sans', [])[:3])
+                sans += '...' if len(cert.get('sans', [])) > 3 else ''
+                cert_html += f"""                <tr>
+                    <td>{cert['hostname']}</td>
+                    <td>{badge}</td>
+                    <td>{emisor}</td>
+                    <td>{sans}</td>
+                </tr>
+"""
+            cert_html += """            </table>
+        </div>
+"""
+
         html += f"""
 {whois_html}
+{cert_html}
 {vulns_html}
 {axfr_html}
 """

@@ -39,7 +39,8 @@ from reporter import Reporter
 @click.option('--no-infra', is_flag=True, help='Saltar checks de infraestructura')
 @click.option('--whois', is_flag=True, help='Consultar WHOIS del dominio')
 @click.option('--ssl', is_flag=True, help='Inspeccionar certificados SSL/TLS')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl):
+@click.option('--geo', is_flag=True, help='Geolocalizar IPs encontradas')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -87,6 +88,7 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             check_infrastructure=not no_infra,
             con_whois=whois,
             con_ssl=ssl,
+            con_geo=geo,
         )
 
         if output == 'all':

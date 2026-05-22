@@ -53,6 +53,7 @@ class Reporter:
             vulns = resultados.get('vulnerabilidades', [])
             vuln_summary = resultados.get('resumen_vulnerabilidades', {})
             whois = resultados.get('whois', {})
+            geo = resultados.get('geo', [])
             certificados = resultados.get('certificados', [])
 
             lineas = []
@@ -146,6 +147,20 @@ class Reporter:
                     estado = 'VENCIDO' if cert.get('expirado') else f'{dias}'
                     emisor = cert.get('emisor', {}).get('organizationName', '?')
                     lineas.append(f"  {cert['hostname']:<40} {estado:<10} {emisor[:30]}")
+                lineas.append("")
+
+            if geo:
+                lineas.append("-" * 70)
+                lineas.append(f"  GEOLOCALIZACION ({len(geo)} IPs)")
+                lineas.append("-" * 70)
+                lineas.append("")
+                lineas.append(f"  {'IP':<18} {'Pais':<20} {'ASN':<20} {'ISP'}")
+                lineas.append(f"  {'-'*18} {'-'*20} {'-'*20} {'-'*30}")
+                for g in geo:
+                    pais = g.get('pais', '?') or '?'
+                    asn = g.get('asn', '?') or '?'
+                    isp = (g.get('isp', '?') or '?')[:30]
+                    lineas.append(f"  {g['ip']:<18} {pais:<20} {asn:<20} {isp}")
                 lineas.append("")
 
             if vulns:
@@ -247,6 +262,7 @@ class Reporter:
         vulns = resultados.get('vulnerabilidades', [])
         vuln_summary = resultados.get('resumen_vulnerabilidades', {})
         whois = resultados.get('whois', {})
+        geo = resultados.get('geo', [])
         certificados = resultados.get('certificados', [])
 
         registros_html = ""
@@ -555,9 +571,30 @@ class Reporter:
         </div>
 """
 
+        geo_html = ""
+        if geo:
+            geo_rows = ""
+            for g in geo[:30]:
+                geo_rows += f"""                <tr>
+                    <td>{g['ip']}</td>
+                    <td>{g.get('pais', '?')}</td>
+                    <td>{g.get('asn', '?')}</td>
+                    <td>{g.get('isp', '?')}</td>
+                </tr>
+"""
+            geo_html = f"""
+        <h2>Geolocalizacion</h2>
+        <div class="card">
+            <table>
+                <tr><th>IP</th><th>Pais</th><th>ASN</th><th>ISP</th></tr>
+{geo_rows}            </table>
+        </div>
+"""
+
         html += f"""
 {whois_html}
 {cert_html}
+{geo_html}
 {vulns_html}
 {axfr_html}
 """

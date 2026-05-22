@@ -13,7 +13,7 @@ python main.py example.com -w wordlists/subdomains-medium.txt -t 30 --vulns
 ## Structure
 
 - `main.py` — CLI entrypoint (Click), adds `src/` to `sys.path` at line 10
-- `src/` — all application code, flat module layout, no packaging (`pyproject.toml` / `setup.py` absent)
+- `src/` — all application code, flat module layout
 - `resultados/<dominio>/` — output directory (gitignored)
 - `/tmp/dnstraking_*` — temp permutation wordlists (gitignored)
 - No tests, no CI, no lint/format/typecheck config exist
@@ -47,6 +47,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `--tipos-dns` | record types to query (default: A) |
 | `--whois` | WHOIS / RDAP domain registration lookup |
 | `--ssl` | SSL/TLS certificate inspection of subdomains |
+| `--geo` | IP geolocation & ASN lookup |
 
 ## Passive sources
 

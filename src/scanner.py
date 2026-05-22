@@ -14,6 +14,7 @@ from sources import PassiveSources
 from vulnerabilities import VulnerabilityScanner
 from whois_lookup import WhoisLookup
 from certificate import CertificateInspector
+from geo import GeoLocator
 from color_util import icono_ok, icono_error, icono_exito, icono_info, cian, negrita, verde, amarillo, rojo
 
 import dns.zone
@@ -352,6 +353,38 @@ class DNSScanner:
                     existentes.add(san)
         return nuevos
 
+    def localizar_ips(self):
+        inicio = time.time()
+        ips = set()
+        for sub in self.resultados.get('subdominios', []):
+            ips.update(sub.get('ips', []))
+        for sub in self.resultados.get('subdominios_pasivos', []):
+            ips.update(sub.get('ips', []))
+        for tipo in ('A', 'AAAA'):
+            ips.update(self.resultados.get('basicos', {}).get(tipo, []))
+
+        if not ips:
+            print(f"\n {icono_info()} Sin IPs para geolocalizar")
+            return []
+
+        print(f"\n[+] Geolocalizando {len(ips)} IPs...")
+        print("-" * 60)
+
+        geo = GeoLocator(timeout=5)
+        resultados = geo.localizar_multiples(list(ips))
+        self.resultados['geo'] = resultados
+
+        for g in resultados[:15]:
+            print(f"  {g['ip']:<18} {g.get('pais', '?'):<20} "
+                  f"{g.get('asn', '?'):<20} {g.get('isp', '?')[:30]}")
+        if len(resultados) > 15:
+            print(f"  ... y {len(resultados) - 15} mas")
+
+        print(f"\n  {icono_exito()} IPs localizadas: {len(resultados)}/{len(ips)}")
+
+        self.tiempos_fases['geo'] = time.time() - inicio
+        return resultados
+
     def escanear_completo(
         self,
         wordlist: str = None,
@@ -371,6 +404,7 @@ class DNSScanner:
         check_infrastructure: bool = True,
         con_whois: bool = False,
         con_ssl: bool = False,
+        con_geo: bool = False,
     ) -> Dict:
         tiempo_total_inicio = time.time()
 
@@ -429,6 +463,8 @@ class DNSScanner:
         if con_vulnerabilidades:
             fases_activas += 1
         if con_ssl and (wordlist or con_pasivo):
+            fases_activas += 1
+        if con_geo:
             fases_activas += 1
 
         fase = 1
@@ -515,6 +551,14 @@ class DNSScanner:
                 self.inspeccionar_certificados()
             except Exception as e:
                 print(f"  {icono_error()} Error en SSL: {e}")
+            fase += 1
+
+        if con_geo:
+            print(f"\n[FASE {fase}/{fases_activas}] Geolocalizacion de IPs")
+            try:
+                self.localizar_ips()
+            except Exception as e:
+                print(f"  {icono_error()} Error en geo: {e}")
             fase += 1
 
         tiempo_total = time.time() - tiempo_total_inicio

@@ -49,6 +49,7 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `--ssl` | SSL/TLS certificate inspection of subdomains |
 | `--geo` | IP geolocation & ASN lookup |
 | `--doh` | DNS-over-HTTPS (Cloudflare) |
+| `--ports` | Port scan common ports on discovered IPs |
 
 ## Passive sources
 
@@ -65,3 +66,13 @@ Certificate inspection uses Python's built-in `ssl` and `socket` modules (no ext
 ## DNS-over-HTTPS
 
 Uses Cloudflare JSON API (no extra deps). Replaces system DNS resolver entirely when `--doh` is set.
+
+## Tests
+
+```bash
+pip install pytest
+pytest tests/
+```
+
+11 tests: resolver (5), DoH (4), WHOIS (2). Uses mocking, no network required.
+

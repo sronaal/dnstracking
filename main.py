@@ -42,7 +42,8 @@ from reporter import Reporter
 @click.option('--ssl', is_flag=True, help='Inspeccionar certificados SSL/TLS')
 @click.option('--geo', is_flag=True, help='Geolocalizar IPs encontradas')
 @click.option('--doh', is_flag=True, help='Usar DNS-over-HTTPS (Cloudflare)')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo, doh):
+@click.option('--ports', is_flag=True, help='Escanear puertos comunes en IPs')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois, ssl, geo, doh, ports):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -95,6 +96,7 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             con_whois=whois,
             con_ssl=ssl,
             con_geo=geo,
+            con_puertos=ports,
         )
 
         if output == 'all':

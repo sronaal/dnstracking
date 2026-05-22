@@ -232,6 +232,60 @@ class Reporter:
             print(f"[-] Error al guardar TXT: {e}")
 
     @staticmethod
+    def guardar_ndjson(resultados: Dict, archivo: str):
+        try:
+            directorio = os.path.dirname(archivo)
+            if directorio:
+                os.makedirs(directorio, exist_ok=True)
+
+            subdominios = (
+                resultados.get('subdominios', []) +
+                resultados.get('subdominios_pasivos', [])
+            )
+            with open(archivo, 'w') as f:
+                for sub in subdominios:
+                    linea = json.dumps({
+                        'dominio': sub['dominio'],
+                        'ips': sub.get('ips', []),
+                        'fuentes': sub.get('fuentes', []),
+                    }, default=str)
+                    f.write(linea + '\n')
+            print(f"[OK] NDJSON guardado: {archivo}")
+        except Exception as e:
+            print(f"[-] Error al guardar NDJSON: {e}")
+
+    @staticmethod
+    def guardar_yaml(resultados: Dict, archivo: str):
+        try:
+            import yaml
+            directorio = os.path.dirname(archivo)
+            if directorio:
+                os.makedirs(directorio, exist_ok=True)
+
+            datos = {
+                'dominio': resultados.get('dominio'),
+                'fecha': resultados.get('fecha'),
+                'registros': {
+                    k: v for k, v in resultados.get('basicos', {}).items() if v
+                },
+                'subdominios': [
+                    {'dominio': s['dominio'], 'ips': s.get('ips', [])}
+                    for s in resultados.get('subdominios', [])
+                ],
+                'vulnerabilidades': [
+                    {'id': v['id'], 'nombre': v['nombre'], 'severidad': v['severidad']}
+                    for v in resultados.get('vulnerabilidades', [])
+                ],
+            }
+            with open(archivo, 'w') as f:
+                yaml.dump(datos, f, default_flow_style=False, allow_unicode=True)
+            print(f"[OK] YAML guardado: {archivo}")
+        except ImportError:
+            print("[-] YAML no disponible: pip install pyyaml")
+        except Exception as e:
+            print(f"[-] Error al guardar YAML: {e}")
+
+    @staticmethod
     def guardar_csv(subdominios: List[Dict], archivo: str):
         try:
             directorio = os.path.dirname(archivo)
@@ -638,9 +692,14 @@ class Reporter:
         csv_path = os.path.join(directorio, f"subdominios_{timestamp}.csv")
         html_path = os.path.join(directorio, f"reporte_{timestamp}.html")
 
+        ndjson_path = os.path.join(directorio, f"subdominios_{timestamp}.ndjson")
+        yaml_path = os.path.join(directorio, f"scan_{timestamp}.yaml")
+
         Reporter.guardar_json(resultados, json_path)
         Reporter.guardar_txt(resultados, txt_path)
         Reporter.guardar_html(resultados, html_path)
+        Reporter.guardar_ndjson(resultados, ndjson_path)
+        Reporter.guardar_yaml(resultados, yaml_path)
 
         subdominios = resultados.get('subdominios', [])
         subdominios_pasivos = resultados.get('subdominios_pasivos', [])

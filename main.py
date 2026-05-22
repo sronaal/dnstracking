@@ -22,7 +22,7 @@ from reporter import Reporter
 @click.option('--no-axfr', is_flag=True, help='No intentar transferencia de zona')
 @click.option('--no-reverse', is_flag=True, help='No realizar busquedas inversas')
 @click.option('-v', '--verbose', is_flag=True, help='Modo verbose')
-@click.option('-o', '--output', default='all', type=click.Choice(['txt', 'json', 'csv', 'html', 'all']), help='Formato de salida (default: all)')
+@click.option('-o', '--output', default='all', type=click.Choice(['txt', 'json', 'csv', 'html', 'ndjson', 'yaml', 'all']), help='Formato de salida (default: all)')
 @click.option('--timeout', default=5, type=int, help='Timeout en segundos para consultas DNS')
 @click.option('--max-sub', default=None, type=int, help='Limitar numero de subdominios encontrados')
 @click.option('--delay', default=0.0, type=float, help='Delay en segundos entre lotes de consultas')
@@ -115,6 +115,10 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
                 subs = resultados.get('subdominios', []) + resultados.get('subdominios_pasivos', [])
                 if subs:
                     Reporter.guardar_csv(subs, os.path.join(directorio, f"subdominios_{timestamp}.csv"))
+            elif output == 'ndjson':
+                Reporter.guardar_ndjson(resultados, os.path.join(directorio, f"subdominios_{timestamp}.ndjson"))
+            elif output == 'yaml':
+                Reporter.guardar_yaml(resultados, os.path.join(directorio, f"scan_{timestamp}.yaml"))
 
     except KeyboardInterrupt:
         print("\n[-] Escaneo cancelado por el usuario")

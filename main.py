@@ -36,7 +36,8 @@ from reporter import Reporter
 @click.option('--vulns-only', is_flag=True, help='Solo analisis de vulnerabilidades (sin enumeracion completa)')
 @click.option('--no-takeover', is_flag=True, help='Saltar check de subdomain takeover')
 @click.option('--no-infra', is_flag=True, help='Saltar checks de infraestructura')
-def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra):
+@click.option('--whois', is_flag=True, help='Consultar WHOIS del dominio')
+def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_sub, delay, dns_server, threads, tipos_dns, no_wildcard, permutations, passive, passive_only, output_dir, vulns, vulns_only, no_takeover, no_infra, whois):
     """
     DNSTRACKING - Escaner DNS de Reconocimiento
 
@@ -81,6 +82,7 @@ def main(dominio, wordlist, no_axfr, no_reverse, verbose, output, timeout, max_s
             solo_vulnerabilidades=vulns_only,
             check_takeover=not no_takeover,
             check_infrastructure=not no_infra,
+            con_whois=whois,
         )
 
         if output == 'all':

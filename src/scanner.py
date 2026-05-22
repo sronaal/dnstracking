@@ -12,6 +12,7 @@ from resolver import DNSResolver
 from subdomain_scanner import SubdomainScanner
 from sources import PassiveSources
 from vulnerabilities import VulnerabilityScanner
+from whois_lookup import WhoisLookup
 
 import dns.zone
 import dns.query
@@ -249,6 +250,37 @@ class DNSScanner:
         self.tiempos_fases['vulnerabilidades'] = time.time() - inicio
         return findings
 
+    def consulta_whois(self):
+        inicio = time.time()
+        print(f"\n[+] Consulta WHOIS para {self.dominio}")
+        print("-" * 60)
+
+        whois = WhoisLookup(timeout=10)
+        resultado = whois.consultar(self.dominio)
+        self.resultados['whois'] = resultado
+
+        if resultado.get('registrar'):
+            print(f"  Registrar: {resultado['registrar']}")
+        if resultado.get('creacion'):
+            print(f"  Creacion:  {resultado['creacion']}")
+        if resultado.get('expiracion'):
+            print(f"  Expira:    {resultado['expiracion']}")
+        if resultado.get('name_servers'):
+            print(f"  NS:        {', '.join(resultado['name_servers'][:5])}")
+            if len(resultado['name_servers']) > 5:
+                print(f"             ... y {len(resultado['name_servers']) - 5} mas")
+        if resultado.get('estado'):
+            print(f"  Estado:    {resultado['estado']}")
+        if resultado.get('notas'):
+            for nota in resultado['notas']:
+                print(f"  [!] {nota}")
+
+        if not resultado.get('registrar') and not resultado.get('error'):
+            print("  [-] No se obtuvo informacion del registro")
+
+        self.tiempos_fases['whois'] = time.time() - inicio
+        return resultado
+
     def escanear_completo(
         self,
         wordlist: str = None,
@@ -266,6 +298,7 @@ class DNSScanner:
         solo_vulnerabilidades: bool = False,
         check_takeover: bool = True,
         check_infrastructure: bool = True,
+        con_whois: bool = False,
     ) -> Dict:
         tiempo_total_inicio = time.time()
 
@@ -279,6 +312,8 @@ class DNSScanner:
             print("\n[*] Modo solo vulnerabilidades")
             print("[*] Ejecutando enumeracion basica requerida...")
             self.enumerar_registros_basicos()
+            if con_whois:
+                self.consulta_whois()
             self.analisis_vulnerabilidades(
                 check_takeover=check_takeover,
                 check_infrastructure=check_infrastructure,
@@ -293,6 +328,8 @@ class DNSScanner:
         if solo_pasivo:
             print("\n[*] Modo solo pasivo - Sin consultas DNS directas")
             self.enumeracion_pasiva()
+            if con_whois:
+                self.consulta_whois()
             self.resultados['estadisticas']['tiempo_total'] = time.time() - tiempo_total_inicio
             print("\n" + "=" * 60)
             print("  ESCANEO COMPLETADO")
@@ -306,22 +343,46 @@ class DNSScanner:
             return self.resultados
         print("[OK] Dominio valido\n")
 
-        print("[FASE 1/5] Enumeracion de registros basicos")
+        fases_activas = 1  # registros basicos
+        if con_whois:
+            fases_activas += 1
+        if con_pasivo:
+            fases_activas += 1
+        if wordlist:
+            fases_activas += 1
+        if intentar_axfr:
+            fases_activas += 1
+        if reverse_lookup:
+            fases_activas += 1
+        if con_vulnerabilidades:
+            fases_activas += 1
+
+        fase = 1
+        print(f"\n[FASE {fase}/{fases_activas}] Enumeracion de registros basicos")
         try:
             self.enumerar_registros_basicos()
         except Exception as e:
             print(f"[-] Error en enumeracion basica: {e}")
 
+        fase += 1
+        if con_whois:
+            print(f"\n[FASE {fase}/{fases_activas}] Consulta WHOIS")
+            try:
+                self.consulta_whois()
+            except Exception as e:
+                print(f"[-] Error en WHOIS: {e}")
+            fase += 1
+
         if con_pasivo:
-            print("\n[FASE 2/5] Enumeracion pasiva (APIs externas)")
+            print(f"\n[FASE {fase}/{fases_activas}] Enumeracion pasiva (APIs externas)")
             try:
                 self.enumeracion_pasiva()
             except Exception as e:
                 print(f"[-] Error en enumeracion pasiva: {e}")
+            fase += 1
 
         if wordlist:
-            fase_num = "3/5" if con_pasivo else "2/4"
-            print(f"\n[FASE {fase_num}] Enumeracion de subdominios")
+            print(f"\n[FASE {fase}/{fases_activas}] Enumeracion de subdominios")
             try:
                 self.enumerar_subdominios(
                     wordlist=wordlist,
@@ -336,22 +397,20 @@ class DNSScanner:
                 print("\n[-] Enumeracion de subdominios cancelada")
             except Exception as e:
                 print(f"[-] Error en enumeracion de subdominios: {e}")
-        else:
-            print("\n[FASE 2/4] Enumeracion de subdominios - OMITIDA")
+            fase += 1
 
         if intentar_axfr:
-            print("\n[FASE 3/4] Transferencia de zona DNS")
+            print(f"\n[FASE {fase}/{fases_activas}] Transferencia de zona DNS")
             try:
                 self.transferencia_zona()
             except KeyboardInterrupt:
                 print("\n[-] Transferencia de zona cancelada")
             except Exception as e:
                 print(f"[-] Error en transferencia de zona: {e}")
-        else:
-            print("\n[FASE 3/4] Transferencia de zona - OMITIDA")
+            fase += 1
 
         if reverse_lookup:
-            print("\n[FASE 4/4] Busquedas inversas")
+            print(f"\n[FASE {fase}/{fases_activas}] Busquedas inversas")
             ips_a_resolver = []
             for tipo, valores in self.resultados['basicos'].items():
                 if tipo in ('A', 'AAAA'):
@@ -361,11 +420,10 @@ class DNSScanner:
             ips_unicas = list(set(ips_a_resolver))
             if ips_unicas:
                 self.busquedas_inversas(ips_unicas)
-        else:
-            print("\n[FASE 4/4] Busquedas inversas - OMITIDA")
+            fase += 1
 
         if con_vulnerabilidades:
-            print("\n[FASE 5/5] Analisis de vulnerabilidades")
+            print(f"\n[FASE {fase}/{fases_activas}] Analisis de vulnerabilidades")
             try:
                 self.analisis_vulnerabilidades(
                     check_takeover=check_takeover,
@@ -402,6 +460,14 @@ class DNSScanner:
 
         registros_con_datos = sum(1 for v in self.resultados['basicos'].values() if v)
         print(f"\n  {'Registros DNS':.<40} {registros_con_datos} tipos")
+
+        whois_data = self.resultados.get('whois', {})
+        if whois_data and whois_data.get('registrar'):
+            print(f"  {'WHOIS Registrar':.<40} {whois_data['registrar'][:50]}")
+            if whois_data.get('creacion'):
+                print(f"  {'WHOIS Creacion':.<40} {whois_data['creacion'][:25]}")
+            if whois_data.get('expiracion'):
+                print(f"  {'WHOIS Expira':.<40} {whois_data['expiracion'][:25]}")
 
         num_subdominios = len(self.resultados['subdominios'])
         print(f"  {'Subdominios (activo)':.<40} {num_subdominios}")

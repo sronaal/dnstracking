@@ -52,6 +52,7 @@ class Reporter:
             stats = resultados.get('estadisticas', {})
             vulns = resultados.get('vulnerabilidades', [])
             vuln_summary = resultados.get('resumen_vulnerabilidades', {})
+            whois = resultados.get('whois', {})
 
             lineas = []
             lineas.append("=" * 70)
@@ -115,6 +116,21 @@ class Reporter:
                 lineas.append("-" * 70)
                 for ip, dom in reverse_exitosos.items():
                     lineas.append(f"  {ip:<20} -> {dom}")
+                lineas.append("")
+
+            if whois and whois.get('registrar'):
+                lineas.append("-" * 70)
+                lineas.append("  WHOIS")
+                lineas.append("-" * 70)
+                lineas.append(f"  Registrar: {whois.get('registrar', 'N/A')}")
+                if whois.get('creacion'):
+                    lineas.append(f"  Creacion:  {whois['creacion']}")
+                if whois.get('expiracion'):
+                    lineas.append(f"  Expira:    {whois['expiracion']}")
+                if whois.get('name_servers'):
+                    lineas.append(f"  NS:        {', '.join(whois['name_servers'][:5])}")
+                if whois.get('estado'):
+                    lineas.append(f"  Estado:    {whois['estado']}")
                 lineas.append("")
 
             if vulns:
@@ -215,6 +231,7 @@ class Reporter:
         stats = resultados.get('estadisticas', {})
         vulns = resultados.get('vulnerabilidades', [])
         vuln_summary = resultados.get('resumen_vulnerabilidades', {})
+        whois = resultados.get('whois', {})
 
         registros_html = ""
         for tipo, valores in basicos.items():
@@ -469,7 +486,29 @@ class Reporter:
         </div>
 """
 
+        whois_html = ""
+        if whois and whois.get('registrar'):
+            whois_html = f"""
+        <h2>WHOIS</h2>
+        <div class="card">
+            <table>
+                <tr><th>Campo</th><th>Valor</th></tr>
+                <tr><td>Registrar</td><td>{whois.get('registrar', 'N/A')}</td></tr>
+"""
+            if whois.get('creacion'):
+                whois_html += f"                <tr><td>Creacion</td><td>{whois['creacion']}</td></tr>\n"
+            if whois.get('expiracion'):
+                whois_html += f"                <tr><td>Expira</td><td>{whois['expiracion']}</td></tr>\n"
+            if whois.get('name_servers'):
+                whois_html += f"                <tr><td>Name Servers</td><td>{', '.join(whois['name_servers'][:5])}</td></tr>\n"
+            if whois.get('estado'):
+                whois_html += f"                <tr><td>Estado</td><td>{whois['estado']}</td></tr>\n"
+            whois_html += """            </table>
+        </div>
+"""
+
         html += f"""
+{whois_html}
 {vulns_html}
 {axfr_html}
 """

@@ -16,12 +16,12 @@ python main.py example.com -w wordlists/subdomains-medium.txt -t 30 --vulns
 - `src/` — all application code, flat module layout
 - `resultados/<dominio>/` — output directory (gitignored)
 - `/tmp/dnstraking_*` — temp permutation wordlists (gitignored)
-- No tests, no CI, no lint/format/typecheck config exist
+- 11 tests (resolver 5, DoH 4, WHOIS 2) in `tests/` via pytest (mocked, no network)
+- Ruff & mypy config exists in `pyproject.toml` (tools not installed)
 
-## Known dependency issues
+## Notes
 
-- `requests==2.31.0` is now listed in `requirements.txt` (was previously missing)
-- `colorama==0.4.6` is listed but not yet imported by any source file
+- `requests==2.31.0` in `requirements.txt` (was previously missing, now resolved)
 
 ## Commands
 
@@ -29,7 +29,7 @@ python main.py example.com -w wordlists/subdomains-medium.txt -t 30 --vulns
 python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 ```
 
-`-o all` (default) writes JSON, TXT, HTML, CSV to `resultados/<dominio>/`. Use `-d <dir>` to change base dir.
+`-o all` (default) writes TXT, JSON, CSV, HTML, NDJSON, YAML to `resultados/<dominio>/`. Use `-d <dir>` to change base dir (default: `resultados`).
 
 ## Key flags
 
@@ -38,11 +38,12 @@ python main.py <dominio> -w wordlists/subdomains-medium.txt -t 30 --vulns
 | `-w` | subdomain wordlist path |
 | `-t` | threads (default 20) |
 | `-p` | subdomain permutations |
-| `--passive` | passive sources (crt.sh, HackerTarget, CertSpotter, RapidDNS) |
+| `--passive` | passive sources (crt.sh, HackerTarget, CertSpotter, RapidDNS, AlienVault, ThreatCrowd) |
 | `--passive-only` | skip direct DNS queries entirely |
-| `--vulns` | security checks (14 checks, CRITICAL to INFO) |
+| `--vulns` | security checks (11 checks, CRITICAL to INFO) |
 | `--vulns-only` | skip subdomain enumeration, just check vulns |
 | `--no-takeover` | skip HTTP takeover verification |
+| `--no-infra` | skip infrastructure checks (CAA, TTL, NS, MX, amplification) |
 | `--dns-server` | custom DNS server |
 | `--tipos-dns` | record types to query (default: A) |
 | `--whois` | WHOIS / RDAP domain registration lookup |

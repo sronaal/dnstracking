@@ -83,7 +83,6 @@ class DNSScanner:
         return resultados
 
     def enumeracion_pasiva(self) -> List[Dict]:
-        """Enumeracion de subdominios via fuentes pasivas"""
         inicio = time.time()
         print(f"\n[+] Enumeracion pasiva de subdominios")
         print("-" * 60)

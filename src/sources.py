@@ -188,6 +188,7 @@ class PassiveSources:
         self.alienvault()
         self.threatcrowd()
 
+        total_antes = len(self.subdominios) if hasattr(self, 'subdominios') else 0
         resultados = []
         for sub, data in self.subdominios.items():
             resultados.append({

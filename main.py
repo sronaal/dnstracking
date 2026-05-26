@@ -7,6 +7,7 @@ Herramienta para auditoria y analisis de infraestructura DNS
 import sys
 import os
 import json
+from typing import Dict
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'src'))
 
